@@ -1,0 +1,184 @@
+@import "tailwindcss";
+
+@theme {
+  /* Brand colours sampled from the Dilruba logo */
+  --color-brand: #dc2025;
+  --color-brand-dark: #b3161b;
+  --color-flame: #ee571d;
+  --color-amber: #f5a019;
+  --color-gold: #e29219;
+
+  --color-ink: #16181d;
+  --color-muted: #5e6573;
+  --color-sand: #fbf6ef;
+  --color-cream: #fff9f2;
+  --color-line: #ece5dc;
+
+  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-4xl: 2rem;
+  --radius-5xl: 2.5rem;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: #ffffff;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-amber) 35%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .container-x {
+    margin-inline: auto;
+    width: 100%;
+    max-width: 80rem;
+    padding-inline: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .container-x {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    padding: 0.75rem 1.4rem;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    transition:
+      background-color 150ms,
+      color 150ms,
+      box-shadow 150ms,
+      transform 150ms;
+  }
+
+  .btn:active {
+    transform: translateY(1px);
+  }
+
+  .btn-primary {
+    background: var(--color-brand);
+    color: #fff;
+    box-shadow: 0 8px 24px -10px color-mix(in srgb, var(--color-brand) 70%, transparent);
+  }
+
+  .btn-primary:hover {
+    background: var(--color-brand-dark);
+  }
+
+  .btn-amber {
+    background: var(--color-amber);
+    color: var(--color-ink);
+  }
+
+  .btn-amber:hover {
+    background: var(--color-gold);
+  }
+
+  .btn-white {
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  .btn-white:hover {
+    background: var(--color-sand);
+  }
+
+  .btn-outline {
+    border: 1px solid var(--color-line);
+    background: #fff;
+    color: var(--color-ink);
+  }
+
+  .btn-outline:hover {
+    border-color: var(--color-ink);
+  }
+
+  .btn-whatsapp {
+    background: #25d366;
+    color: #0b2e17;
+  }
+
+  .btn-whatsapp:hover {
+    background: #1fbd5b;
+  }
+
+  .field {
+    width: 100%;
+    border-radius: 9999px;
+    border: 1px solid var(--color-line);
+    background: #fff;
+    padding: 0.7rem 1rem;
+    font-size: 0.9rem;
+    color: var(--color-ink);
+    transition: border-color 150ms;
+  }
+
+  .field::placeholder {
+    color: #9aa0aa;
+  }
+
+  .field:focus {
+    outline: none;
+    border-color: var(--color-ink);
+  }
+
+  textarea.field {
+    border-radius: 1.25rem;
+  }
+
+  .label {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-radius: 9999px;
+    padding: 0.35rem 0.9rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
