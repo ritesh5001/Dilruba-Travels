@@ -36,7 +36,43 @@ const photos = {
 
 export type PhotoKey = keyof typeof photos;
 
+// Our own images in public/images/, used instead of the Unsplash photo for that key.
+// Add an entry here when an image is approved; keys left out keep their Unsplash photo.
+const localPhotos: Partial<Record<PhotoKey, string>> = {
+  flight: "flight.webp",
+  petra: "petra.webp",
+  petraDay: "petraDay.webp",
+  istanbul: "istanbul.webp",
+  cappadocia: "cappadocia.webp",
+  cappadociaBalloons: "cappadociaBalloons.webp",
+  dubai: "dubai.webp",
+  dubaiNight: "dubaiNight.webp",
+  thailand: "thailand.webp",
+  thailandBoats: "thailandBoats.webp",
+  singapore: "singapore.webp",
+  marinaBay: "marinaBay.webp",
+  kashmir: "kashmir.webp",
+  kashmirLake: "kashmirLake.webp",
+  bali: "bali.webp",
+  kerala: "kerala.webp",
+  goa: "goa.webp",
+  tajMahal: "tajMahal.webp",
+  kaaba: "kaaba.webp",
+  kaabaAerial: "kaabaAerial.webp",
+  madinah: "madinah.webp",
+  madinahDome: "madinahDome.webp",
+  madinahInterior: "madinahInterior.webp",
+  najaf: "najaf.webp",
+  najafTower: "najafTower.webp",
+  domeOfTheRock: "domeOfTheRock.webp",
+  aqsa: "aqsa.webp",
+};
+
 export function photo(key: PhotoKey, width = 1600) {
+  const local = localPhotos[key];
+  // next/image resizes local files itself, so the requested width only matters for Unsplash.
+  if (local) return `/images/${local}`;
+
   const id = photos[key];
   if (id.startsWith("photo-")) {
     return `https://images.unsplash.com/${id}?auto=format&fit=crop&w=${width}&q=80`;
