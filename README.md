@@ -35,7 +35,12 @@ browser never talks to the backend directly and no CORS setup is needed.
 | `backend/.env` | `PORT` | `4000` | API port |
 | `backend/.env` | `CORS_ORIGIN` | none | Comma-separated origins allowed to call the API from a browser |
 
-See `backend/.env.example`.
+Copy the examples to get started (every variable has a working local default, so this is optional in development):
+
+```bash
+cp frontend/.env.example frontend/.env
+cp backend/.env.example backend/.env
+```
 
 ## Where things live
 
