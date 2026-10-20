@@ -42,6 +42,16 @@ cp frontend/.env.example frontend/.env
 cp backend/.env.example backend/.env
 ```
 
+For production, start from the `.env.production.example` files instead:
+
+```bash
+cp frontend/.env.production.example frontend/.env.production
+cp backend/.env.production.example backend/.env
+```
+
+`BACKEND_URL` is read at build time, so set it before `npm run build`.
+The site's own port is set in the shell (`PORT=3000 npm start -w frontend`), not in a `.env` file.
+
 ## Where things live
 
 | What | File |
