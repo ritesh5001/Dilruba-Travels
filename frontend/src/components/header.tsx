@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { Menu, Phone, X } from "lucide-react";
 import { navLinks, site, whatsappLink } from "@/lib/site";
 import { Logo } from "./logo";
@@ -102,6 +103,17 @@ export function Header() {
     };
   }, [open]);
 
+  // The header is rendered inside each page's hero, which is its own stacking context
+  // (`isolate`), so a fixed bar's z-index there would only rank it within the hero and
+  // later positioned content (images, cards) would paint over it. The scrolled bar and the
+  // mobile menu therefore render straight into <body>. Both start hidden, so mounting them
+  // after hydration changes nothing on first paint.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
   return (
     <>
       {/* Sits inside the hero, like the reference design */}
@@ -109,72 +121,80 @@ export function Header() {
         <NavBar onMenu={() => setOpen(true)} />
       </header>
 
-      {/* Compact bar that slides in once the hero is scrolled past */}
-      <div
-        aria-hidden={!scrolled}
-        inert={!scrolled}
-        className={`fixed inset-x-0 top-0 z-40 border-b border-line bg-white/90 px-3 py-2 backdrop-blur-md transition-transform duration-300 sm:px-5 ${
-          scrolled ? "translate-y-0" : "-translate-y-full"
-        }`}
-      >
-        <div className="mx-auto max-w-7xl">
-          <NavBar sticky onMenu={() => setOpen(true)} />
-        </div>
-      </div>
-
-      {/* Mobile menu */}
-      <div
-        className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`}
-        aria-hidden={!open}
-        inert={!open}
-      >
-        <div
-          className={`absolute inset-0 bg-ink/50 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
-          onClick={() => setOpen(false)}
-        />
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Menu"
-          className={`absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-white p-5 shadow-2xl transition-transform duration-300 ${
-            open ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <Logo className="h-9 w-auto" />
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Close menu"
-              className="inline-flex size-11 items-center justify-center rounded-full bg-sand"
-            >
-              <X className="size-5" />
-            </button>
-          </div>
-          <nav aria-label="Mobile" className="mt-8 flex flex-col gap-1">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-                className={`rounded-2xl px-4 py-3 text-lg font-medium ${
-                  isActive(pathname, link.href) ? "bg-sand text-brand" : "text-ink hover:bg-sand"
-                }`}
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="mt-auto grid gap-3">
-            <a href={site.phoneHref} className="btn btn-outline">
-              <Phone className="size-4" aria-hidden /> {site.phone}
-            </a>
-            <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
-              <WhatsAppIcon className="size-4" /> Chat on WhatsApp
-            </a>
-          </div>
-        </div>
-      </div>
+      {mounted && createPortal(overlays(), document.body)}
     </>
   );
+
+  function overlays() {
+    return (
+      <>
+        {/* Compact bar that slides in once the hero is scrolled past */}
+        <div
+          aria-hidden={!scrolled}
+          inert={!scrolled}
+          className={`fixed inset-x-0 top-0 z-40 border-b border-line bg-white/90 px-3 py-2 backdrop-blur-md transition-transform duration-300 sm:px-5 ${
+            scrolled ? "translate-y-0" : "-translate-y-full"
+          }`}
+        >
+          <div className="mx-auto max-w-7xl">
+            <NavBar sticky onMenu={() => setOpen(true)} />
+          </div>
+        </div>
+
+        {/* Mobile menu */}
+        <div
+          className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`}
+          aria-hidden={!open}
+          inert={!open}
+        >
+          <div
+            className={`absolute inset-0 bg-ink/50 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            className={`absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-white p-5 shadow-2xl transition-transform duration-300 ${
+              open ? "translate-x-0" : "translate-x-full"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <Logo className="h-9 w-auto" />
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="Close menu"
+                className="inline-flex size-11 items-center justify-center rounded-full bg-sand"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+            <nav aria-label="Mobile" className="mt-8 flex flex-col gap-1">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setOpen(false)}
+                  className={`rounded-2xl px-4 py-3 text-lg font-medium ${
+                    isActive(pathname, link.href) ? "bg-sand text-brand" : "text-ink hover:bg-sand"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            <div className="mt-auto grid gap-3">
+              <a href={site.phoneHref} className="btn btn-outline">
+                <Phone className="size-4" aria-hidden /> {site.phone}
+              </a>
+              <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
+                <WhatsAppIcon className="size-4" /> Chat on WhatsApp
+              </a>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 }
