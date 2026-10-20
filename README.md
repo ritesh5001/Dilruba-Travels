@@ -1,29 +1,58 @@
-# Dilruba Travels website
+# Dilruba Travels
 
 Website for **Dilruba Travels Of India Pvt Ltd** (Mahim East, Mumbai): Umrah, Hajj, Iraq, Jordan,
 Palestine and Turkey packages, plus Asia and India holidays. The admin CRM (`/admin`) will be added next.
 
-Built with Next.js 16 (App Router, Cache Components), TypeScript and Tailwind CSS v4.
+An npm-workspaces monorepo:
+
+| Folder | What | Stack |
+| --- | --- | --- |
+| `frontend/` | Public website | Next.js 16 (App Router, Cache Components), TypeScript, Tailwind CSS v4 |
+| `backend/` | REST API (enquiries, later the CRM) | Express 5, TypeScript |
+| `shared/` | Code used by both, e.g. enquiry validation | TypeScript, zod |
 
 ## Getting started
 
 ```bash
-npm install
-npm run dev     # http://localhost:3000
-npm run build   # production build
+npm install     # from the repo root; installs every workspace
+npm run dev     # backend on http://localhost:4000, site on http://localhost:3000
+npm run build   # production build of both
+npm start       # run both production builds
 npm run lint
+npm run typecheck
 ```
+
+Run one side only with `npm run dev -w backend` or `npm run dev -w frontend`.
+
+The site calls the API at `/api/*`; the Next.js server proxies those requests to the backend, so the
+browser never talks to the backend directly and no CORS setup is needed.
+
+## Environment variables
+
+| Where | Variable | Default | Purpose |
+| --- | --- | --- | --- |
+| `frontend/.env` | `BACKEND_URL` | `http://localhost:4000` | Where `/api/*` is proxied to |
+| `backend/.env` | `PORT` | `4000` | API port |
+| `backend/.env` | `CORS_ORIGIN` | none | Comma-separated origins allowed to call the API from a browser |
+
+See `backend/.env.example`.
 
 ## Where things live
 
 | What | File |
 | --- | --- |
-| Phone, WhatsApp, email, address | `src/lib/site.ts` |
-| Package categories and packages | `src/lib/packages.ts` |
-| Photos (Unsplash, free licence) | `src/lib/images.ts` |
-| Homepage FAQs | `src/lib/faqs.ts` |
-| Enquiry form validation | `src/lib/enquiry.ts` |
-| Enquiry API (will save leads to the CRM) | `src/app/api/enquiry/route.ts` |
+| Phone, WhatsApp, email, address | `frontend/src/lib/site.ts` |
+| Package categories and packages | `frontend/src/lib/packages.ts` |
+| Photos (Unsplash, free licence) | `frontend/src/lib/images.ts` |
+| Homepage FAQs | `frontend/src/lib/faqs.ts` |
+| Enquiry form validation (shared) | `shared/src/enquiry.ts` |
+| Enquiry API (will save leads to the CRM) | `backend/src/routes/enquiry.ts` |
+| API server setup | `backend/src/index.ts` |
+
+## API
+
+- `GET /api/health`
+- `POST /api/enquiry` → `{ ok: true }` or `400 { ok: false, error }`
 
 ## Pages
 
@@ -34,7 +63,7 @@ npm run lint
 
 ## Before launch
 
-- Confirm package prices, durations, hotels and inclusions in `src/lib/packages.ts`
+- Confirm package prices, durations, hotels and inclusions in `frontend/src/lib/packages.ts`
   (`startingPrice: null` shows "Best price on request").
 - Replace stock photos with real group and office photos where possible.
 - Review the draft Terms and Privacy Policy.

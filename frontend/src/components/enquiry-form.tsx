@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
-import { enquirySchema, enquiryToWhatsapp, services, type Enquiry } from "@/lib/enquiry";
+import { enquirySchema, enquiryToWhatsapp, services, type Enquiry } from "@dilruba/shared/enquiry";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 

@@ -20,7 +20,7 @@ import { JsonLd } from "@/components/json-ld";
 import { WhatsAppIcon } from "@/components/icons";
 import { photo } from "@/lib/images";
 import { faqJsonLd } from "@/lib/faqs";
-import type { services } from "@/lib/enquiry";
+import type { services } from "@dilruba/shared/enquiry";
 import {
   formatPrice,
   getCategory,
