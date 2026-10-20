@@ -9,14 +9,14 @@ import { Empty, ErrorBox, LeadBadge, ListFilters, Loading, PageHeader, Paginatio
 
 export default function LeadsPage() {
   const params = useSearchParams();
-  const { data, error } = useAdminData<Paged<AdminLead>>(`/leads?${params.toString()}`);
+  const { data, error, reload } = useAdminData<Paged<AdminLead>>(`/leads?${params.toString()}`);
 
   return (
     <>
       <PageHeader title="Leads" subtitle="Enquiries from the website forms. Contact them, then convert to a booking." />
       <ListFilters statuses={leadStatuses.map((s) => ({ value: s, label: leadStatusLabels[s] }))} />
       {error ? (
-        <ErrorBox message={error} />
+        <ErrorBox message={error} onRetry={reload} />
       ) : !data ? (
         <Loading />
       ) : data.items.length === 0 ? (

@@ -9,16 +9,33 @@ export class ApiError extends Error {
   }
 }
 
-/** Calls /api/admin/*. Throws ApiError with the server's message on failure. */
+// The backend host may need up to a minute to wake from sleep; don't spin forever after that.
+const TIMEOUT_MS = 75_000;
+
+/** Calls /api/admin/*. Throws ApiError with the server's message on failure (status 0 = no response). */
 export async function adminFetch<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  const res = await fetch(`/api/admin${path}`, {
-    method: init?.method ?? "GET",
-    headers: init?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/admin${path}`, {
+      method: init?.method ?? "GET",
+      headers: init?.body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new ApiError(
+      err instanceof DOMException && err.name === "TimeoutError"
+        ? "The server took too long to respond. It may be starting up; please try again."
+        : "Couldn't reach the server. Check your internet connection and try again.",
+      0,
+    );
+  }
   const data = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (!res.ok) throw new ApiError(data.error ?? "Something went wrong", res.status);
+  if (!res.ok) {
+    const fallback = res.status >= 500 ? "The server isn't responding right now. Please try again in a minute." : "Something went wrong";
+    throw new ApiError(data.error ?? fallback, res.status);
+  }
   return data;
 }
 
@@ -32,6 +49,7 @@ export function useAdminData<T>(path: string | null) {
   const reload = useCallback(async () => {
     if (!path) return;
     setLoading(true);
+    setError(null);
     try {
       setData(await adminFetch<T>(path));
       setError(null);

@@ -12,10 +12,10 @@ import { BookingBadge, Card, ErrorBox, Field, LeadBadge, Loading, NotesPanel, Pa
 export default function LeadDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { data: lead, setData, error } = useAdminData<AdminLeadDetail>(`/leads/${id}`);
+  const { data: lead, setData, error, reload } = useAdminData<AdminLeadDetail>(`/leads/${id}`);
   const action = useAction();
 
-  if (error) return <ErrorBox message={error} />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!lead) return <Loading />;
 
   const setStatus = async (status: LeadStatus) => {

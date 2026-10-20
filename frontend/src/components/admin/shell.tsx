@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarCheck, ExternalLink, Inbox, LayoutDashboard, LogOut, Users } from "lucide-react";
-import { adminFetch } from "@/lib/admin-api";
-import { Loading } from "./ui";
+import { ApiError, adminFetch } from "@/lib/admin-api";
+import { ErrorBox, Loading } from "./ui";
 
 const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -19,13 +19,22 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isLogin = pathname === "/admin/login";
   const [email, setEmail] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (isLogin) return;
     adminFetch<{ email: string }>("/me")
-      .then((me) => setEmail(me.email))
-      .catch(() => router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`));
-  }, [isLogin, pathname, router]);
+      .then((me) => {
+        setEmail(me.email);
+        setProblem(null);
+      })
+      .catch((err: unknown) => {
+        // Only a real "not logged in" goes to the login page; network trouble gets a retry.
+        if (err instanceof ApiError && err.status === 401) router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
+        else setProblem(err instanceof Error ? err.message : "Couldn't reach the server");
+      });
+  }, [isLogin, pathname, router, attempt]);
 
   if (isLogin) return <div className="flex min-h-full flex-1 items-center justify-center bg-sand p-4">{children}</div>;
 
@@ -71,7 +80,21 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">{email ? children : <Loading />}</main>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        {email ? (
+          children
+        ) : problem ? (
+          <ErrorBox
+            message={problem}
+            onRetry={() => {
+              setProblem(null);
+              setAttempt((n) => n + 1);
+            }}
+          />
+        ) : (
+          <Loading />
+        )}
+      </main>
     </div>
   );
 }

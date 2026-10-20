@@ -22,11 +22,11 @@ const rupees = (paise: number | null) => (paise === null ? "" : String(paise / 1
 
 export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: b, setData, error } = useAdminData<AdminBookingDetail>(`/bookings/${id}`);
+  const { data: b, setData, error, reload } = useAdminData<AdminBookingDetail>(`/bookings/${id}`);
   const action = useAction();
   const [flash, setFlash] = useState<string | null>(null);
 
-  if (error) return <ErrorBox message={error} />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!b) return <Loading />;
 
   async function mutate(path: string, method: string, body?: unknown, message?: string) {

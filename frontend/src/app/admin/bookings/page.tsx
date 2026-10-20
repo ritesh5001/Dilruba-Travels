@@ -9,14 +9,14 @@ import { BookingBadge, Empty, ErrorBox, ListFilters, Loading, PageHeader, Pagina
 
 export default function BookingsPage() {
   const params = useSearchParams();
-  const { data, error } = useAdminData<Paged<AdminBooking>>(`/bookings?${params.toString()}`);
+  const { data, error, reload } = useAdminData<Paged<AdminBooking>>(`/bookings?${params.toString()}`);
 
   return (
     <>
       <PageHeader title="Bookings" subtitle="Set the price, send the payment link, and track payments for every trip." />
       <ListFilters statuses={bookingStatuses.map((s) => ({ value: s, label: bookingStatusLabels[s] }))} />
       {error ? (
-        <ErrorBox message={error} />
+        <ErrorBox message={error} onRetry={reload} />
       ) : !data ? (
         <Loading />
       ) : data.items.length === 0 ? (

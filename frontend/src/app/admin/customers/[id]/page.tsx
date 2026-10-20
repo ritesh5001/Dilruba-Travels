@@ -12,11 +12,11 @@ import { BookingBadge, Card, Empty, ErrorBox, LeadBadge, Loading, NotesPanel, Pa
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: c, setData, error } = useAdminData<AdminCustomerDetail>(`/customers/${id}`);
+  const { data: c, setData, error, reload } = useAdminData<AdminCustomerDetail>(`/customers/${id}`);
   const action = useAction();
   const [saved, setSaved] = useState(false);
 
-  if (error) return <ErrorBox message={error} />;
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!c) return <Loading />;
 
   async function mutate(path: string, method: string, body: unknown) {

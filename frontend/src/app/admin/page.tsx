@@ -7,8 +7,8 @@ import { useAdminData } from "@/lib/admin-api";
 import { BookingBadge, Card, Empty, ErrorBox, LeadBadge, Loading, PageHeader, formatDate } from "@/components/admin/ui";
 
 export default function AdminDashboardPage() {
-  const { data, error } = useAdminData<Dashboard>("/dashboard");
-  if (error) return <ErrorBox message={error} />;
+  const { data, error, reload } = useAdminData<Dashboard>("/dashboard");
+  if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!data) return <Loading />;
   const s = data.stats;
 

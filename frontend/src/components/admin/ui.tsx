@@ -94,8 +94,17 @@ export function Loading() {
   );
 }
 
-export function ErrorBox({ message }: { message: string }) {
-  return <p role="alert" className="rounded-xl bg-brand/10 px-4 py-3 text-sm font-medium text-brand">{message}</p>;
+export function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-brand/10 px-4 py-3 text-sm font-medium text-brand">
+      <p>{message}</p>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className="btn btn-outline !bg-white !py-1.5 text-ink">
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Empty({ children }: { children: React.ReactNode }) {

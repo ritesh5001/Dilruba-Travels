@@ -9,14 +9,14 @@ import { Empty, ErrorBox, ListFilters, Loading, PageHeader, Pagination, formatDa
 
 export default function CustomersPage() {
   const params = useSearchParams();
-  const { data, error } = useAdminData<Paged<AdminCustomer>>(`/customers?${params.toString()}`);
+  const { data, error, reload } = useAdminData<Paged<AdminCustomer>>(`/customers?${params.toString()}`);
 
   return (
     <>
       <PageHeader title="Customers" subtitle="Everyone who has enquired or booked, matched by phone number." />
       <ListFilters statuses={[]} />
       {error ? (
-        <ErrorBox message={error} />
+        <ErrorBox message={error} onRetry={reload} />
       ) : !data ? (
         <Loading />
       ) : data.items.length === 0 ? (
