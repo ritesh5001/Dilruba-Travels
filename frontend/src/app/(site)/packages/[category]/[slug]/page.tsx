@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   BedDouble,
@@ -20,7 +21,6 @@ import { JsonLd } from "@/components/json-ld";
 import { WhatsAppIcon } from "@/components/icons";
 import { photo } from "@/lib/images";
 import { faqJsonLd } from "@/lib/faqs";
-import type { services } from "@dilruba/shared/enquiry";
 import {
   formatPrice,
   getCategory,
@@ -29,20 +29,9 @@ import {
   packageHref,
   packageWhatsappMessage,
   packages,
-  type CategorySlug,
+  serviceFor,
 } from "@/lib/packages";
 import { site, whatsappLink } from "@/lib/site";
-
-const serviceFor: Record<CategorySlug, (typeof services)[number]> = {
-  umrah: "Umrah",
-  hajj: "Hajj",
-  iraq: "Iraq Ziyarat",
-  jordan: "Jordan",
-  palestine: "Palestine (Al-Aqsa)",
-  turkey: "Turkey",
-  asia: "Asia Holiday",
-  domestic: "India Holiday",
-};
 
 export function generateStaticParams() {
   return packages.map((p) => ({ category: p.category, slug: p.slug }));
@@ -137,18 +126,21 @@ export default async function PackagePage(props: PageProps<"/packages/[category]
               Prices change with dates and hotel availability. Message us for today&apos;s best price.
             </p>
             <div className="mt-6 grid gap-3">
+              <Link href={`/book/${p.category}/${p.slug}`} className="btn btn-primary">
+                Book this package
+              </Link>
               <a href={waLink} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
                 <WhatsAppIcon className="size-4" /> Get Quote on WhatsApp
               </a>
               <a href={site.phoneHref} className="btn btn-outline">
                 <Phone className="size-4" aria-hidden /> Call {site.phone}
               </a>
-              <a href="#enquire-package" className="btn btn-primary">
+              <a href="#enquire-package" className="btn btn-outline">
                 Send an enquiry
               </a>
             </div>
             <ul className="mt-6 space-y-2 border-t border-line pt-5 text-sm text-muted">
-              <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> No payment needed to enquire</li>
+              <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> No payment until you accept the price</li>
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> Customisable dates and hotels</li>
               <li className="flex gap-2"><Check className="mt-0.5 size-4 shrink-0 text-brand" aria-hidden /> Group and family discounts</li>
             </ul>

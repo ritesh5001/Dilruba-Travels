@@ -1,3 +1,4 @@
+import type { services } from "@dilruba/shared/enquiry";
 import type { PhotoKey } from "./images";
 
 // Package catalogue. This is static for now and will move into the CRM
@@ -890,6 +891,18 @@ export const packages: TravelPackage[] = [
     documents: ["Government photo ID for all travellers"],
   },
 ];
+
+/** Which enquiry "service" a category's forms pre-select. */
+export const serviceFor: Record<CategorySlug, (typeof services)[number]> = {
+  umrah: "Umrah",
+  hajj: "Hajj",
+  iraq: "Iraq Ziyarat",
+  jordan: "Jordan",
+  palestine: "Palestine (Al-Aqsa)",
+  turkey: "Turkey",
+  asia: "Asia Holiday",
+  domestic: "India Holiday",
+};
 
 export const mainCategories = categories.filter((c) => c.group === "main");
 export const generalCategories = categories.filter((c) => c.group === "general");

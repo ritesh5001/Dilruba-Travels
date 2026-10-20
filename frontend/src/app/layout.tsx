@@ -2,10 +2,6 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/outfit";
 import "@fontsource-variable/plus-jakarta-sans";
 import "./globals.css";
-import { TopBar } from "@/components/top-bar";
-import { Footer } from "@/components/footer";
-import { WhatsAppFloat } from "@/components/whatsapp-float";
-import { MobileActionBar } from "@/components/mobile-action-bar";
 import { JsonLd } from "@/components/json-ld";
 import { fullAddress, site } from "@/lib/site";
 
@@ -53,13 +49,10 @@ const organization = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full">
-      <body className="flex min-h-full flex-col pb-16 md:pb-0">
+      <body className="flex min-h-full flex-col">
         <JsonLd data={organization} />
-        <TopBar />
-        <main className="flex-1">{children}</main>
-        <Footer />
-        <WhatsAppFloat />
-        <MobileActionBar />
+        {/* Site chrome lives in (site)/layout.tsx; the admin panel has its own in admin/layout.tsx. */}
+        {children}
       </body>
     </html>
   );

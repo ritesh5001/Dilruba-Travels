@@ -21,7 +21,7 @@ function resolveService(tab: (typeof heroTabs)[number], option: string): Service
   return (services as readonly string[]).includes(option) ? (option as Service) : tab.service;
 }
 
-function useSubmit(source: string) {
+function useSubmit(source: string, onSent?: () => void) {
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [sent, setSent] = useState<Partial<Enquiry>>({});
 
@@ -41,6 +41,7 @@ function useSubmit(source: string) {
       });
       if (!res.ok) throw new Error();
       setStatus({ state: "done" });
+      onSent?.();
     } catch {
       setStatus({
         state: "error",
@@ -233,13 +234,16 @@ export function EnquiryForm({
   packageName,
   defaultService = "Umrah",
   dark,
+  onSent,
 }: {
   source: string;
   packageName?: string;
   defaultService?: Service;
   dark?: boolean;
+  /** Called once the enquiry has been saved. */
+  onSent?: () => void;
 }) {
-  const { status, sent, submit, reset } = useSubmit(source);
+  const { status, sent, submit, reset } = useSubmit(source, onSent);
   const id = (name: string) => `${source.replace(/\W+/g, "-").toLowerCase()}-${name}`;
   const labelClass = `label ${dark ? "!text-white" : ""}`;
 

@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./enquiry": "./src/enquiry.ts"
+    "./enquiry": "./src/enquiry.ts",
+    "./booking": "./src/booking.ts",
+    "./site": "./src/site.ts",
+    "./crm": "./src/crm.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

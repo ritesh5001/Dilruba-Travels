@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { PageHero } from "@/components/page-hero";
+import { SiteChrome } from "@/components/site-chrome";
 import { photo } from "@/lib/images";
 
+// Rendered by the root layout, outside the (site) group, so it adds the site chrome itself.
 export default function NotFound() {
   return (
-    <>
+    <SiteChrome>
       <PageHero
         image={photo("petraDay", 2000)}
         eyebrow="404"
@@ -17,6 +19,6 @@ export default function NotFound() {
         </div>
       </PageHero>
       <div className="py-10" />
-    </>
+    </SiteChrome>
   );
 }
