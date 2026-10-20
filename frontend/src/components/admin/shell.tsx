@@ -4,8 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarCheck, ExternalLink, Inbox, LayoutDashboard, LogOut, Users } from "lucide-react";
-import { ApiError, adminFetch } from "@/lib/admin-api";
-import { ErrorBox, Loading } from "./ui";
+import { ApiError, adminFetch, clearAdminCache } from "@/lib/admin-api";
 
 const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -19,27 +18,28 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isLogin = pathname === "/admin/login";
   const [email, setEmail] = useState<string | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
 
+  // Checked once when the panel opens (not on every page), in parallel with the page's own data:
+  // waiting for it first added a full round trip to every click. Any page request that comes
+  // back "not logged in" also sends the browser to the login page (see useAdminData).
   useEffect(() => {
     if (isLogin) return;
     adminFetch<{ email: string }>("/me")
-      .then((me) => {
-        setEmail(me.email);
-        setProblem(null);
-      })
+      .then((me) => setEmail(me.email))
       .catch((err: unknown) => {
-        // Only a real "not logged in" goes to the login page; network trouble gets a retry.
-        if (err instanceof ApiError && err.status === 401) router.replace(`/admin/login?next=${encodeURIComponent(pathname)}`);
-        else setProblem(err instanceof Error ? err.message : "Couldn't reach the server");
+        if (err instanceof ApiError && err.status === 401) {
+          router.replace(`/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        }
+        // Network trouble: the page's own request shows the error and a Retry button.
       });
-  }, [isLogin, pathname, router, attempt]);
+  }, [isLogin, router]);
 
   if (isLogin) return <div className="flex min-h-full flex-1 items-center justify-center bg-sand p-4">{children}</div>;
 
   async function logout() {
     await adminFetch("/logout", { method: "POST" }).catch(() => {});
+    clearAdminCache();
+    setEmail(null);
     router.replace("/admin/login");
   }
 
@@ -80,21 +80,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
-        {email ? (
-          children
-        ) : problem ? (
-          <ErrorBox
-            message={problem}
-            onRetry={() => {
-              setProblem(null);
-              setAttempt((n) => n + 1);
-            }}
-          />
-        ) : (
-          <Loading />
-        )}
-      </main>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">{children}</main>
     </div>
   );
 }

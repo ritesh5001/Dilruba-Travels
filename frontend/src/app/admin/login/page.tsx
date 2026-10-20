@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Lock } from "lucide-react";
-import { adminFetch } from "@/lib/admin-api";
+import { adminFetch, clearAdminCache } from "@/lib/admin-api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,6 +18,7 @@ export default function AdminLoginPage() {
     setError(null);
     try {
       await adminFetch("/login", { method: "POST", body: { email: form.get("email"), password: form.get("password") } });
+      clearAdminCache();
       // Only follow same-site admin paths after login.
       const next = params.get("next");
       router.replace(next?.startsWith("/admin") && !next.startsWith("/admin/login") ? next : "/admin");

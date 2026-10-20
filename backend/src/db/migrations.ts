@@ -91,6 +91,16 @@ const migrations: Record<string, Migration> = {
   },
 };
 
+migrations["0002_list_sort_indexes"] = {
+  // The admin lists sort newest first, often without a status filter.
+  async up(db: Kysely<any>) {
+    await db.schema.createIndex("leads_created_idx").on("leads").column("created_at").execute();
+    await db.schema.createIndex("bookings_created_idx").on("bookings").column("created_at").execute();
+    await db.schema.createIndex("customers_updated_idx").on("customers").column("updated_at").execute();
+    await db.schema.createIndex("payments_paid_idx").on("payments").columns(["status", "paid_at"]).execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

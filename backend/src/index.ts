@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { sql } from "kysely";
 import { config } from "./config.ts";
 import { db } from "./db/index.ts";
 import { migrateToLatest } from "./db/migrations.ts";
@@ -19,7 +20,25 @@ app.disable("x-powered-by");
 app.set("trust proxy", "loopback, linklocal, uniquelocal");
 app.use(cors({ origin: corsOrigins ?? false }));
 
-app.get("/api/health", (_req, res) => {
+// Logs slow requests so we can see where time goes (Render → Logs).
+const SLOW_REQUEST_MS = 800;
+app.use((req, res, next) => {
+  const start = performance.now();
+  res.on("finish", () => {
+    const ms = Math.round(performance.now() - start);
+    if (ms > SLOW_REQUEST_MS) console.warn(`[slow] ${req.method} ${req.path} ${res.statusCode} ${ms}ms`);
+  });
+  next();
+});
+
+// `?db=1` also runs a trivial query: point an uptime monitor at it to keep the database awake too.
+app.get("/api/health", async (req, res) => {
+  if (req.query.db === "1") {
+    const start = performance.now();
+    await sql`select 1`.execute(db);
+    res.json({ ok: true, dbMs: Math.round(performance.now() - start) });
+    return;
+  }
   res.json({ ok: true });
 });
 
@@ -60,6 +79,12 @@ for (let attempt = 1; ; attempt++) {
   }
 }
 
-app.listen(config.PORT, () => {
+const server = app.listen(config.PORT, () => {
   console.info(`Backend listening on http://localhost:${config.PORT}`);
 });
+
+// Requests arrive through proxies (Next.js, the host's load balancer) that reuse connections.
+// Node closes idle ones after 5s by default, so a proxy could send a request down a socket we
+// had just closed and get ECONNRESET (a random 500). Keep them open longer than the proxies do.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;

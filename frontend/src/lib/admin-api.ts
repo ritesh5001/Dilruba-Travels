@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export class ApiError extends Error {
@@ -39,21 +39,56 @@ export async function adminFetch<T>(path: string, init?: { method?: string; body
   return data;
 }
 
-/** Loads `path` on mount and whenever it changes; `reload` refetches, `setData` applies a mutation's response. */
+// Last response per admin path, kept for this browser tab only. Revisiting a page shows it
+// instantly while a fresh copy loads in the background.
+const cache = new Map<string, unknown>();
+
+/** Forget cached admin data (on login/logout, so one session never sees another's). */
+export function clearAdminCache() {
+  cache.clear();
+}
+
+/**
+ * Loads `path` on mount and whenever it changes; `reload` refetches, `setData` applies a
+ * mutation's response. Cached data for the path is returned immediately, then refreshed.
+ */
 export function useAdminData<T>(path: string | null) {
   const router = useRouter();
-  const [data, setData] = useState<T | null>(null);
+  const [entry, setEntry] = useState<{ path: string | null; data: T | null }>(() => ({
+    path,
+    data: path ? ((cache.get(path) as T | undefined) ?? null) : null,
+  }));
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const latestPath = useRef(path);
+  useEffect(() => {
+    latestPath.current = path;
+  }, [path]);
+
+  // On a path change, show that path's cached copy (if any) until the fresh one arrives.
+  const data = entry.path === path ? entry.data : path ? ((cache.get(path) as T | undefined) ?? null) : null;
+
+  const setData = useCallback(
+    (next: T) => {
+      if (path) cache.set(path, next);
+      setEntry({ path, data: next });
+    },
+    [path],
+  );
 
   const reload = useCallback(async () => {
     if (!path) return;
     setLoading(true);
     setError(null);
     try {
-      setData(await adminFetch<T>(path));
+      const fresh = await adminFetch<T>(path);
+      // A slower response for an older path (e.g. a previous filter) must not overwrite this one.
+      if (latestPath.current !== path) return;
+      cache.set(path, fresh);
+      setEntry({ path, data: fresh });
       setError(null);
     } catch (err) {
+      if (latestPath.current !== path) return;
       // Session expired: log in again, then come back here.
       if (err instanceof ApiError && err.status === 401) {
         router.replace(`/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
