@@ -2,6 +2,7 @@ import { TopBar } from "./top-bar";
 import { Footer } from "./footer";
 import { WhatsAppFloat } from "./whatsapp-float";
 import { MobileActionBar } from "./mobile-action-bar";
+import { QuotePopup } from "./quote-popup";
 
 /** Header, footer and floating contact buttons for every public page. */
 export function SiteChrome({ children }: { children: React.ReactNode }) {
@@ -12,6 +13,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
       <Footer />
       <WhatsAppFloat />
       <MobileActionBar />
+      <QuotePopup />
     </div>
   );
 }
