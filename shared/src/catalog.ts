@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PublicDeparture } from "./ops.ts";
 
 // Package catalogue shared by the website, the admin panel and the API.
 // Categories are fixed in code (they shape the site's navigation); packages live in the database.
@@ -47,6 +48,8 @@ export type TravelPackage = {
   exclusions: string[];
   documents: string[];
   faqs?: Faq[];
+  /** Upcoming group dates with seats left, soonest first. */
+  departures?: PublicDeparture[];
 };
 
 /** Admin view: also shows hidden packages and when they changed. */

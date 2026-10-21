@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { bookingStatusLabels, leadStatusLabels, type BookingStatus, type LeadStatus } from "@dilruba/shared/booking";
 import type { AdminNote } from "@dilruba/shared/crm";
+import { quoteStatusLabels, visaStatusLabels, type InstalmentState, type QuoteStatus, type VisaStatus } from "@dilruba/shared/ops";
+import { WhatsAppIcon } from "@/components/icons";
 
 export function formatDate(iso: string, withTime = false) {
   return new Date(iso).toLocaleString("en-IN", {
@@ -44,6 +46,62 @@ const leadTone: Record<LeadStatus, keyof typeof tone> = {
   converted: "green",
   lost: "red",
 };
+
+const quoteTone: Record<QuoteStatus, keyof typeof tone> = { draft: "neutral", sent: "blue", accepted: "green", declined: "red", expired: "amber" };
+const visaTone: Record<VisaStatus, keyof typeof tone> = { not_started: "neutral", documents_pending: "amber", submitted: "blue", approved: "green", rejected: "red" };
+const instalmentTone: Record<InstalmentState, keyof typeof tone> = { paid: "green", part_paid: "blue", due: "neutral", overdue: "red" };
+const instalmentLabels: Record<InstalmentState, string> = { paid: "Paid", part_paid: "Part paid", due: "Due", overdue: "Overdue" };
+
+export function Badge({ children, color = "neutral" }: { children: React.ReactNode; color?: keyof typeof tone }) {
+  return <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone[color]}`}>{children}</span>;
+}
+
+export function QuoteBadge({ status }: { status: QuoteStatus }) {
+  return <Badge color={quoteTone[status]}>{quoteStatusLabels[status]}</Badge>;
+}
+
+export function VisaBadge({ status }: { status: VisaStatus }) {
+  return <Badge color={visaTone[status]}>{visaStatusLabels[status]}</Badge>;
+}
+
+export function InstalmentBadge({ state }: { state: InstalmentState }) {
+  return <Badge color={instalmentTone[state]}>{instalmentLabels[state]}</Badge>;
+}
+
+/** Link to an admin CSV export (the session cookie goes with it). */
+export const exportUrl = (path: string) => `/api/admin/reports/export/${path}`;
+
+/** A WhatsApp button with ready-made messages: pick one, it opens the chat with the text filled in. */
+export function WhatsAppTemplates({ phone, templates }: { phone: string; templates: { label: string; text: string }[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="btn btn-whatsapp !py-2">
+        <WhatsAppIcon className="size-4" /> WhatsApp <ChevronDown className="size-4" aria-hidden />
+      </button>
+      {open && (
+        <>
+          <button type="button" aria-label="Close" className="fixed inset-0 z-10 cursor-default" onClick={() => setOpen(false)} />
+          <ul className="absolute right-0 z-20 mt-2 w-72 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-xl shadow-black/10">
+            {templates.map((t) => (
+              <li key={t.label}>
+                <a
+                  href={customerWhatsapp(phone, t.text)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setOpen(false)}
+                  className="block px-4 py-2.5 text-sm hover:bg-sand"
+                >
+                  {t.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
 
 export function BookingBadge({ status }: { status: BookingStatus }) {
   return <span className={`inline-flex shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone[bookingTone[status]]}`}>{bookingStatusLabels[status]}</span>;
@@ -225,7 +283,7 @@ export function NotesPanel({ notes, onAdd }: { notes: AdminNote[]; onAdd: (body:
             <li key={n.id} className={`rounded-xl px-3 py-2.5 text-sm ${n.kind === "note" ? "bg-cream ring-1 ring-line" : "text-muted"}`}>
               <p className="whitespace-pre-wrap">{n.body}</p>
               <p className="mt-1 text-xs text-muted">
-                {n.kind === "note" ? "Note" : "Activity"} · {formatDate(n.createdAt, true)}
+                {n.kind === "note" ? "Note" : "Activity"}{n.author && n.kind === "note" ? ` by ${n.author}` : ""} · {formatDate(n.createdAt, true)}
               </p>
             </li>
           ))}

@@ -1,18 +1,28 @@
 import type { Dashboard } from "@dilruba/shared/crm";
+import type { Me } from "@dilruba/shared/ops";
 import { Router } from "express";
 import { sql } from "kysely";
 import { z } from "zod";
 import { config } from "../../config.ts";
 import { db } from "../../db/index.ts";
-import { clearSessionCookie, getAdmin, rateLimit, requireAdmin, safeEqual, setSessionCookie, verifyPassword } from "../../lib/auth.ts";
+import { clearSessionCookie, currentUser, envOwner, getAdmin, rateLimit, requireAdmin, requireOwner, safeEqual, setSessionCookie, verifyPassword } from "../../lib/auth.ts";
 import { parseBody } from "../../lib/util.ts";
+import { dashboardAlerts } from "../../services/alerts.ts";
 import { bookingsAdminRouter } from "./bookings.ts";
 import { customersRouter } from "./customers.ts";
+import { departuresRouter } from "./departures.ts";
 import { leadsRouter } from "./leads.ts";
 import { mediaRouter, packagesRouter } from "./packages.ts";
+import { quotesRouter } from "./quotes.ts";
+import { reportsRouter } from "./reports.ts";
+import { settingsRouter } from "./settings.ts";
+import { staffRouter } from "./staff.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminPayment } from "./mappers.ts";
 
 export const adminRouter = Router();
+
+// Checked when the email isn't a staff account, so every failed login does the same work.
+const DUMMY_HASH = "scrypt:00000000000000000000000000000000:" + "0".repeat(128);
 
 adminRouter.post(
   "/login",
@@ -20,19 +30,34 @@ adminRouter.post(
   async (req, res) => {
     const data = parseBody(z.object({ email: z.string().trim().max(200), password: z.string().max(200) }), req.body, res);
     if (!data) return;
-    if (!config.ADMIN_EMAIL || !config.ADMIN_PASSWORD_HASH) {
-      res.status(503).json({ ok: false, error: "Admin login isn't set up. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH on the server." });
-      return;
+    const email = data.email.toLowerCase();
+
+    // The owner from the server settings.
+    const owner = envOwner();
+    if (owner && config.ADMIN_PASSWORD_HASH && safeEqual(email, owner.email.toLowerCase())) {
+      if (!(await verifyPassword(data.password, config.ADMIN_PASSWORD_HASH))) {
+        return void res.status(401).json({ ok: false, error: "Wrong email or password" });
+      }
+      setSessionCookie(res, owner.id, owner.email);
+      return void res.json({ ok: true, ...owner });
     }
-    const emailOk = safeEqual(data.email.toLowerCase(), config.ADMIN_EMAIL.toLowerCase());
-    // Always check the password so a wrong email takes as long as a wrong password.
-    const passwordOk = await verifyPassword(data.password, config.ADMIN_PASSWORD_HASH);
-    if (!emailOk || !passwordOk) {
-      res.status(401).json({ ok: false, error: "Wrong email or password" });
-      return;
+
+    // A staff account.
+    const user = await db.selectFrom("users").selectAll().where("email", "=", email).executeTakeFirst();
+    // Always check a password so a wrong email takes as long as a wrong password.
+    const passwordOk = await verifyPassword(data.password, user?.password_hash ?? DUMMY_HASH);
+    if (!user || !passwordOk) {
+      if (!user && (!config.ADMIN_EMAIL || !config.ADMIN_PASSWORD_HASH)) {
+        const staff = await db.selectFrom("users").select("id").executeTakeFirst();
+        if (!staff) return void res.status(503).json({ ok: false, error: "Admin login isn't set up. Set ADMIN_EMAIL and ADMIN_PASSWORD_HASH on the server." });
+      }
+      return void res.status(401).json({ ok: false, error: "Wrong email or password" });
     }
-    setSessionCookie(res, config.ADMIN_EMAIL);
-    res.json({ ok: true, email: config.ADMIN_EMAIL });
+    if (!user.active) return void res.status(403).json({ ok: false, error: "This account has been switched off. Ask the owner." });
+    await db.updateTable("users").set({ last_login_at: new Date() }).where("id", "=", user.id).execute();
+    setSessionCookie(res, user.id, user.email);
+    const me: Me = { id: user.id, name: user.name, email: user.email, role: user.role };
+    res.json({ ok: true, ...me });
   },
 );
 
@@ -41,18 +66,19 @@ adminRouter.post("/logout", (_req, res) => {
   res.json({ ok: true });
 });
 
-adminRouter.get("/me", (req, res) => {
-  const admin = getAdmin(req);
+adminRouter.get("/me", async (req, res) => {
+  const admin = await getAdmin(req);
   if (!admin) return void res.status(401).json({ ok: false, error: "Please log in" });
-  res.json({ ok: true, email: admin.email });
+  res.json({ ok: true, ...admin });
 });
 
 // Everything below needs a logged-in admin.
 adminRouter.use(requireAdmin);
 
 adminRouter.get("/dashboard", async (_req, res) => {
+  const me = currentUser(res);
   const monthStart = sql<Date>`date_trunc('month', now())`;
-  const [leadStats, bookingStats, revenue, recentLeads, recentBookings, recentPayments] = await Promise.all([
+  const [leadStats, bookingStats, revenue, recentLeads, recentBookings, recentPayments, followUps, alerts] = await Promise.all([
     db
       .selectFrom("leads")
       .select((eb) => [
@@ -67,7 +93,7 @@ adminRouter.get("/dashboard", async (_req, res) => {
         eb.fn.countAll<number>().filterWhere("status", "=", "confirmed").as("confirmed"),
         eb.fn
           .coalesce(
-            eb.fn.sum<number>(sql<number>`greatest(total_amount - amount_paid, 0)`).filterWhere("status", "in", ["awaiting_payment", "confirmed"]),
+            eb.fn.sum<number>(sql<number>`greatest(total_amount + tcs_amount - amount_paid, 0)`).filterWhere("status", "in", ["awaiting_payment", "confirmed"]),
             eb.val(0),
           )
           .as("outstanding"),
@@ -91,6 +117,15 @@ adminRouter.get("/dashboard", async (_req, res) => {
       .orderBy("payments.paid_at", "desc")
       .limit(6)
       .execute(),
+    // Staff see their own follow-ups and unassigned ones; the owner sees everyone's.
+    leadsQuery()
+      .where("leads.follow_up_at", "<=", sql<Date>`now()`)
+      .where("leads.status", "not in", ["converted", "lost"])
+      .$if(me.role !== "owner", (q) => q.where((eb) => eb.or([eb("leads.assigned_to", "=", me.id), eb("leads.assigned_to", "is", null)])))
+      .orderBy("leads.follow_up_at")
+      .limit(20)
+      .execute(),
+    dashboardAlerts(),
   ]);
 
   const body: Dashboard = {
@@ -105,6 +140,8 @@ adminRouter.get("/dashboard", async (_req, res) => {
     recentLeads: recentLeads.map(toAdminLead),
     recentBookings: recentBookings.map(toAdminBooking),
     recentPayments: recentPayments.map((p) => ({ ...toAdminPayment(p), bookingId: p.booking_id, reference: p.reference, customerName: p.customer_name })),
+    followUps: followUps.map(toAdminLead),
+    ...alerts,
   };
   res.json(body);
 });
@@ -114,3 +151,14 @@ adminRouter.use("/bookings", bookingsAdminRouter);
 adminRouter.use("/customers", customersRouter);
 adminRouter.use("/packages", packagesRouter);
 adminRouter.use("/media", mediaRouter);
+adminRouter.use("/departures", departuresRouter);
+adminRouter.use("/quotes", quotesRouter);
+adminRouter.use("/reports", reportsRouter);
+adminRouter.use("/staff", requireOwner, staffRouter);
+adminRouter.use("/settings", requireOwner, settingsRouter);
+
+/** Active staff, for "assign to" menus (everyone can see who their colleagues are). */
+adminRouter.get("/team", async (_req, res) => {
+  const rows = await db.selectFrom("users").select(["id", "name"]).where("active", "=", true).orderBy("name").execute();
+  res.json(rows);
+});

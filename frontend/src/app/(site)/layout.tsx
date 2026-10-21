@@ -1,5 +1,11 @@
 import { SiteChrome } from "@/components/site-chrome";
+import { ReferralCapture } from "@/components/referral-capture";
 
 export default function SiteLayout({ children }: LayoutProps<"/">) {
-  return <SiteChrome>{children}</SiteChrome>;
+  return (
+    <SiteChrome>
+      <ReferralCapture />
+      {children}
+    </SiteChrome>
+  );
 }

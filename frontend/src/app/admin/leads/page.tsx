@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BellRing, Plus } from "lucide-react";
 import { formatTravelMonth, leadStatuses, leadStatusLabels } from "@dilruba/shared/booking";
 import type { AdminLead, Paged } from "@dilruba/shared/crm";
 import { useAdminData } from "@/lib/admin-api";
@@ -9,12 +10,33 @@ import { Empty, ErrorBox, LeadBadge, ListFilters, Loading, PageHeader, Paginatio
 
 export default function LeadsPage() {
   const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const { data, error, reload } = useAdminData<Paged<AdminLead>>(`/leads?${params.toString()}`);
+  const mine = params.get("assigned") === "me";
+  const toggleMine = () => {
+    const sp = new URLSearchParams(params.toString());
+    if (mine) sp.delete("assigned");
+    else sp.set("assigned", "me");
+    sp.delete("page");
+    router.replace(`${pathname}${sp.size ? `?${sp}` : ""}`);
+  };
 
   return (
     <>
-      <PageHeader title="Leads" subtitle="Enquiries from the website forms. Contact them, then convert to a booking." />
-      <ListFilters statuses={leadStatuses.map((s) => ({ value: s, label: leadStatusLabels[s] }))} />
+      <PageHeader
+        title="Leads"
+        subtitle="Enquiries from the website, phone and walk-ins. Contact them, send a quote, then convert to a booking."
+        actions={
+          <>
+            <button type="button" onClick={toggleMine} aria-pressed={mine} className={`btn !py-2 ${mine ? "bg-ink text-white" : "btn-outline"}`}>
+              My leads
+            </button>
+            <Link href="/admin/leads/new" className="btn btn-primary !py-2"><Plus className="size-4" aria-hidden /> Add lead</Link>
+          </>
+        }
+      />
+      <ListFilters statuses={[{ value: "followup", label: "Follow-ups due" }, ...leadStatuses.map((s) => ({ value: s, label: leadStatusLabels[s] }))]} />
       {error ? (
         <ErrorBox message={error} onRetry={reload} />
       ) : !data ? (
@@ -24,13 +46,14 @@ export default function LeadsPage() {
       ) : (
         <>
           <div className="overflow-x-auto rounded-2xl border border-line bg-white">
-            <table className="w-full min-w-[720px] text-left text-sm">
+            <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="border-b border-line text-xs uppercase tracking-wide text-muted">
                 <tr>
                   <th className="px-4 py-3 font-medium">Received</th>
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Interested in</th>
                   <th className="px-4 py-3 font-medium">Travel</th>
+                  <th className="px-4 py-3 font-medium">Next step</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                 </tr>
               </thead>
@@ -45,6 +68,18 @@ export default function LeadsPage() {
                     <td className="px-4 py-3">{l.packageName ?? `${l.service}${l.option ? ` – ${l.option}` : ""}`}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted">
                       {formatTravelMonth(l.travelMonth)}{l.travellers ? ` · ${l.travellers} pax` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-muted">
+                      {l.followUpAt ? (
+                        <span className={l.followUpAt < new Date().toISOString() ? "font-medium text-brand" : ""}>
+                          <BellRing className="mr-1 inline size-3.5" aria-hidden />{formatDate(l.followUpAt, true)}
+                        </span>
+                      ) : l.status === "lost" && l.lostReason ? (
+                        l.lostReason
+                      ) : (
+                        "—"
+                      )}
+                      {l.assignedTo && <p className="text-xs">{l.assignedTo.name}</p>}
                     </td>
                     <td className="px-4 py-3"><LeadBadge status={l.status} /></td>
                   </tr>

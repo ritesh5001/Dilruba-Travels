@@ -180,6 +180,182 @@ migrations["0003_packages_and_media"] = {
   },
 };
 
+migrations["0004_crm_operations"] = {
+  async up(db: Kysely<any>) {
+    const now = sql`now()`;
+
+    // Staff logins. The owner from ADMIN_EMAIL/ADMIN_PASSWORD_HASH still works and isn't stored here.
+    await db.schema
+      .createTable("users")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("name", "text", (c) => c.notNull())
+      .addColumn("email", "text", (c) => c.notNull().unique())
+      .addColumn("password_hash", "text", (c) => c.notNull())
+      .addColumn("role", "text", (c) => c.notNull().defaultTo("staff"))
+      .addColumn("active", "boolean", (c) => c.notNull().defaultTo(true))
+      .addColumn("last_login_at", "timestamptz")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+
+    await db.schema
+      .alterTable("leads")
+      .addColumn("follow_up_at", "timestamptz")
+      .addColumn("follow_up_note", "text")
+      .addColumn("lost_reason", "text")
+      .addColumn("assigned_to", "integer", (c) => c.references("users.id").onDelete("set null"))
+      .execute();
+    await db.schema.createIndex("leads_follow_up_idx").on("leads").column("follow_up_at").where(sql.ref("follow_up_at"), "is not", null).execute();
+
+    await db.schema.alterTable("notes").addColumn("author", "text").execute();
+
+    await db.schema
+      .alterTable("customers")
+      .addColumn("referral_code", "text", (c) => c.unique())
+      .addColumn("referred_by", "integer", (c) => c.references("customers.id").onDelete("set null"))
+      .execute();
+
+    // Fixed group dates for a package, e.g. "Ramadan Umrah, 1 March, 45 seats".
+    await db.schema
+      .createTable("departures")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("package_id", "integer", (c) => c.references("packages.id").onDelete("set null"))
+      .addColumn("title", "text", (c) => c.notNull())
+      .addColumn("start_date", "date", (c) => c.notNull())
+      .addColumn("end_date", "date")
+      .addColumn("seats", "integer", (c) => c.notNull())
+      .addColumn("status", "text", (c) => c.notNull().defaultTo("open"))
+      .addColumn("notes", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("departures_start_idx").on("departures").column("start_date").execute();
+
+    await db.schema
+      .alterTable("bookings")
+      .addColumn("departure_id", "integer", (c) => c.references("departures.id").onDelete("set null"))
+      .addColumn("tcs_amount", "bigint", (c) => c.notNull().defaultTo(0))
+      .addColumn("invoice_number", "text", (c) => c.unique())
+      .addColumn("invoice_date", "date")
+      .addColumn("feedback_requested_at", "timestamptz")
+      .execute();
+    await db.schema.createIndex("bookings_departure_idx").on("bookings").column("departure_id").execute();
+
+    // One row per person travelling, with what the visa and hotels need.
+    await db.schema
+      .createTable("travellers")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("booking_id", "integer", (c) => c.notNull().references("bookings.id").onDelete("cascade"))
+      .addColumn("full_name", "text", (c) => c.notNull())
+      .addColumn("gender", "text")
+      .addColumn("date_of_birth", "date")
+      .addColumn("phone", "text")
+      .addColumn("passport_number", "text")
+      .addColumn("passport_issue_date", "date")
+      .addColumn("passport_expiry", "date")
+      .addColumn("passport_place", "text")
+      .addColumn("nationality", "text", (c) => c.notNull().defaultTo("Indian"))
+      .addColumn("mahram", "text")
+      .addColumn("visa_status", "text", (c) => c.notNull().defaultTo("not_started"))
+      .addColumn("room_type", "text")
+      .addColumn("room_label", "text")
+      .addColumn("bus_seat", "text")
+      .addColumn("notes", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("travellers_booking_idx").on("travellers").column("booking_id").execute();
+
+    // Passport scans, photos, visas. Only ever served to logged-in staff.
+    await db.schema
+      .createTable("traveller_documents")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("traveller_id", "integer", (c) => c.notNull().references("travellers.id").onDelete("cascade"))
+      .addColumn("kind", "text", (c) => c.notNull())
+      .addColumn("filename", "text", (c) => c.notNull())
+      .addColumn("content_type", "text", (c) => c.notNull())
+      .addColumn("size", "integer", (c) => c.notNull())
+      .addColumn("data", "bytea", (c) => c.notNull())
+      .addColumn("uploaded_by", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("traveller_documents_traveller_idx").on("traveller_documents").column("traveller_id").execute();
+
+    await db.schema
+      .createTable("instalments")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("booking_id", "integer", (c) => c.notNull().references("bookings.id").onDelete("cascade"))
+      .addColumn("label", "text", (c) => c.notNull())
+      .addColumn("due_date", "date", (c) => c.notNull())
+      .addColumn("amount", "bigint", (c) => c.notNull())
+      .addColumn("reminder_sent_at", "timestamptz")
+      .addColumn("overdue_sent_at", "timestamptz")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("instalments_booking_idx").on("instalments").columns(["booking_id", "due_date"]).execute();
+
+    // What the trip costs us: hotels, flights, visas… so each booking shows its margin.
+    await db.schema
+      .createTable("booking_costs")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("booking_id", "integer", (c) => c.notNull().references("bookings.id").onDelete("cascade"))
+      .addColumn("category", "text", (c) => c.notNull())
+      .addColumn("supplier", "text", (c) => c.notNull())
+      .addColumn("amount", "bigint", (c) => c.notNull())
+      .addColumn("paid", "boolean", (c) => c.notNull().defaultTo(false))
+      .addColumn("note", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("booking_costs_booking_idx").on("booking_costs").column("booking_id").execute();
+
+    await db.schema
+      .createTable("quotes")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("reference", "text", (c) => c.notNull().unique())
+      .addColumn("access_token", "text", (c) => c.notNull())
+      .addColumn("customer_id", "integer", (c) => c.notNull().references("customers.id").onDelete("cascade"))
+      .addColumn("lead_id", "integer", (c) => c.references("leads.id").onDelete("set null"))
+      .addColumn("package_id", "integer", (c) => c.references("packages.id").onDelete("set null"))
+      .addColumn("departure_id", "integer", (c) => c.references("departures.id").onDelete("set null"))
+      .addColumn("booking_id", "integer", (c) => c.references("bookings.id").onDelete("set null"))
+      .addColumn("title", "text", (c) => c.notNull())
+      .addColumn("travel_month", "text")
+      .addColumn("adults", "integer", (c) => c.notNull().defaultTo(1))
+      .addColumn("children", "integer", (c) => c.notNull().defaultTo(0))
+      .addColumn("items", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("discount", "bigint", (c) => c.notNull().defaultTo(0))
+      .addColumn("deposit", "bigint")
+      .addColumn("inclusions", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("message", "text")
+      .addColumn("valid_until", "date")
+      .addColumn("status", "text", (c) => c.notNull().defaultTo("draft"))
+      .addColumn("sent_at", "timestamptz")
+      .addColumn("responded_at", "timestamptz")
+      .addColumn("created_by", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("quotes_lead_idx").on("quotes").column("lead_id").execute();
+    await db.schema.createIndex("quotes_customer_idx").on("quotes").column("customer_id").execute();
+
+    await db.schema
+      .createTable("feedback")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("booking_id", "integer", (c) => c.notNull().unique().references("bookings.id").onDelete("cascade"))
+      .addColumn("rating", "integer", (c) => c.notNull())
+      .addColumn("comment", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+
+    // Business details for invoices, tax rates, review link… edited on the Settings page.
+    await db.schema
+      .createTable("settings")
+      .addColumn("key", "text", (c) => c.primaryKey())
+      .addColumn("value", "jsonb", (c) => c.notNull())
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

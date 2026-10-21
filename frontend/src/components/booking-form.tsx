@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { bookingRequestSchema } from "@dilruba/shared/booking";
+import { formatDay, type PublicDeparture } from "@dilruba/shared/ops";
+import { getReferral } from "@/lib/referral";
 
-type Pkg = { category: string; slug: string; title: string };
+type Pkg = { category: string; slug: string; title: string; departures?: PublicDeparture[] };
 
 function nextMonths(count: number) {
   const now = new Date();
@@ -23,13 +25,26 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [months] = useState(() => nextMonths(18));
+  const departures = pkg.departures ?? [];
+  const [departureId, setDepartureId] = useState("");
+  const departure = departures.find((d) => String(d.id) === departureId);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.currentTarget).entries());
     if (data.notes === "") delete data.notes;
+    delete data.departureId;
+    if (departure) {
+      const travellers = Number(data.adults) + Number(data.children);
+      if (travellers > departure.seatsLeft) {
+        setError(`Only ${departure.seatsLeft} seat${departure.seatsLeft === 1 ? "" : "s"} left on this date. Choose another date or reduce travellers.`);
+        return;
+      }
+    }
     const parsed = bookingRequestSchema.safeParse({
       ...data,
+      ...(departure ? { departureId: departure.id, travelMonth: departure.startDate.slice(0, 7) } : {}),
+      referralCode: getReferral(),
       packageCategory: pkg.category,
       packageSlug: pkg.slug,
       packageTitle: pkg.title,
@@ -80,15 +95,30 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
         <label htmlFor="bk-phone" className="label">Phone / WhatsApp</label>
         <input id="bk-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="+91 98XXX XXXXX" className="field" />
       </div>
-      <div className="sm:col-span-2">
-        <label htmlFor="bk-month" className="label">Travel month</label>
-        <select id="bk-month" name="travelMonth" required defaultValue="" className="field appearance-none">
-          <option value="" disabled>Choose a month</option>
-          {months.map((m) => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-      </div>
+      {departures.length > 0 && (
+        <div className="sm:col-span-2">
+          <label htmlFor="bk-departure" className="label">Group date</label>
+          <select id="bk-departure" name="departureId" value={departureId} onChange={(e) => setDepartureId(e.target.value)} className="field appearance-none">
+            <option value="">Other dates (tell us your month)</option>
+            {departures.map((d) => (
+              <option key={d.id} value={d.id} disabled={d.seatsLeft === 0}>
+                {d.title}: {formatDay(d.startDate)}{d.endDate ? ` – ${formatDay(d.endDate)}` : ""} · {d.seatsLeft === 0 ? "full" : `${d.seatsLeft} seat${d.seatsLeft === 1 ? "" : "s"} left`}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {!departure && (
+        <div className="sm:col-span-2">
+          <label htmlFor="bk-month" className="label">Travel month</label>
+          <select id="bk-month" name="travelMonth" required defaultValue="" className="field appearance-none">
+            <option value="" disabled>Choose a month</option>
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
       <div>
         <label htmlFor="bk-adults" className="label">Adults</label>
         <select id="bk-adults" name="adults" defaultValue="2" className="field appearance-none">

@@ -1,14 +1,20 @@
-import { bookingStatuses, bookingStatusLabels, formatINR, paymentMethods } from "@dilruba/shared/booking";
+import { bookingStatuses, bookingStatusLabels, formatINR, formatTravelMonth, paymentMethodLabels, paymentMethods, type PaymentMethod } from "@dilruba/shared/booking";
 import type { AdminBooking, AdminBookingDetail, Paged } from "@dilruba/shared/crm";
-import { Router } from "express";
+import { costInputSchema, financialYear, formatDay, instalmentPlanSchema, splitGst, todayIST, type InvoiceData } from "@dilruba/shared/ops";
+import { site } from "@dilruba/shared/site";
+import { Router, type Response } from "express";
+import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { sendEmail } from "../../email/send.ts";
-import { bookingLink, paymentRequestEmail } from "../../email/templates.ts";
+import { bookingLink, feedbackLink, instalmentReminderEmail, paymentRequestEmail } from "../../email/templates.ts";
+import { currentUser, requireOwner } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { paymentProvider } from "../../payments/index.ts";
-import { addEvent, dueNow, recordManualPayment, sendStatusEmail } from "../../services/crm.ts";
-import { bookingsQuery, toAdminBooking, toAdminNote, toAdminPayment } from "./mappers.ts";
+import { addEvent, balanceOf, dueNow, instalmentStates, payable, recordManualPayment, sendFeedbackRequest, sendStatusEmail } from "../../services/crm.ts";
+import { getSettings, tcsFor } from "../../services/settings.ts";
+import { bookingsQuery, documentsFor, toAdminBooking, toAdminCost, toAdminNote, toAdminPayment, toAdminTraveller } from "./mappers.ts";
+import { travellersRouter } from "./travellers.ts";
 
 export const bookingsAdminRouter = Router();
 
@@ -16,9 +22,11 @@ bookingsAdminRouter.get("/", async (req, res) => {
   const page = pageParam(req.query.page);
   const status = bookingStatuses.find((s) => s === req.query.status);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const departure = parseId(req.query.departure);
 
   let query = bookingsQuery();
   if (status) query = query.where("bookings.status", "=", status);
+  if (departure) query = query.where("bookings.departure_id", "=", departure);
   if (q) {
     const pattern = likePattern(q);
     query = query.where((eb) =>
@@ -39,29 +47,44 @@ bookingsAdminRouter.get("/", async (req, res) => {
   res.json(body);
 });
 
-async function loadBooking(id: number): Promise<AdminBookingDetail | null> {
+async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDetail | null> {
   const row = await bookingsQuery().where("bookings.id", "=", id).executeTakeFirst();
   if (!row) return null;
-  const [payments, notes] = await Promise.all([
+  const [payments, notes, travellers, instalments, costs, feedback, quote, settings] = await Promise.all([
     db.selectFrom("payments").selectAll().where("booking_id", "=", id).where("status", "!=", "created").orderBy("created_at", "desc").execute(),
     db.selectFrom("notes").selectAll().where("booking_id", "=", id).orderBy("created_at", "desc").execute(),
+    db.selectFrom("travellers").selectAll().where("booking_id", "=", id).orderBy("id").execute(),
+    db.selectFrom("instalments").selectAll().where("booking_id", "=", id).execute(),
+    isOwner ? db.selectFrom("booking_costs").selectAll().where("booking_id", "=", id).orderBy("id").execute() : Promise.resolve(null),
+    db.selectFrom("feedback").select(["rating", "comment", "created_at"]).where("booking_id", "=", id).executeTakeFirst(),
+    db.selectFrom("quotes").select("id").where("booking_id", "=", id).executeTakeFirst(),
+    getSettings(),
   ]);
+  const docs = await documentsFor(travellers.map((t) => t.id));
   return {
     ...toAdminBooking(row),
     packageCategory: row.package_category,
     packageSlug: row.package_slug,
     customerNotes: row.customer_notes,
     leadId: row.lead_id,
-    dueNow: dueNow(row),
+    dueNow: dueNow(row, instalments),
     customerLink: bookingLink(row),
     onlinePaymentsEnabled: paymentProvider !== null,
     payments: payments.map(toAdminPayment),
     notes: notes.map(toAdminNote),
+    travellers: travellers.map((t) => toAdminTraveller(t, docs.get(t.id))),
+    instalments: instalmentStates(instalments, row.amount_paid),
+    costs: costs?.map(toAdminCost) ?? null,
+    invoiceNumber: row.invoice_number,
+    suggestedTcs: tcsFor(settings, row.package_category, row.total_amount),
+    feedback: feedback ? { rating: feedback.rating, comment: feedback.comment, createdAt: feedback.created_at.toISOString() } : null,
+    feedbackLink: feedbackLink(row),
+    quoteId: quote?.id ?? null,
   };
 }
 
-async function respondWithBooking(res: import("express").Response, id: number) {
-  const booking = await loadBooking(id);
+export async function respondWithBooking(res: Response, id: number) {
+  const booking = await loadBooking(id, currentUser(res).role === "owner");
   if (!booking) res.status(404).json({ ok: false, error: "Booking not found" });
   else res.json(booking);
 }
@@ -79,10 +102,12 @@ const updateSchema = z
     // Admin forms work in rupees; stored as paise.
     totalAmount: rupees.nullable().optional(),
     depositAmount: rupees.nullable().optional(),
+    tcsAmount: rupees.optional(),
     packageTitle: z.string().trim().min(1).max(160).optional(),
     travelMonth: z.string().trim().regex(/^\d{4}-\d{2}$/).nullable().optional(),
     adults: z.coerce.number().int().min(1).max(50).optional(),
     children: z.coerce.number().int().min(0).max(50).optional(),
+    departureId: z.coerce.number().int().positive().nullable().optional(),
     notifyCustomer: z.boolean().default(true),
   })
   .refine((d) => d.depositAmount == null || d.totalAmount == null || d.depositAmount <= d.totalAmount, {
@@ -91,10 +116,30 @@ const updateSchema = z
 
 const toPaise = (rupee: number | null | undefined) => (rupee == null ? rupee : Math.round(rupee * 100));
 
+/** Seats left on a departure, not counting this booking's own travellers. */
+async function seatsLeft(departureId: number, exceptBookingId: number) {
+  const d = await db
+    .selectFrom("departures")
+    .select(["seats", "title", "status"])
+    .select((eb) =>
+      eb
+        .selectFrom("bookings")
+        .whereRef("bookings.departure_id", "=", "departures.id")
+        .where("bookings.status", "!=", "cancelled")
+        .where("bookings.id", "!=", exceptBookingId)
+        .select((s) => s.fn.coalesce(s.fn.sum<number>(s("bookings.adults", "+", s.ref("bookings.children"))), s.val(0)).as("n"))
+        .as("booked"),
+    )
+    .where("id", "=", departureId)
+    .executeTakeFirst();
+  return d ? { ...d, left: d.seats - Number(d.booked ?? 0) } : null;
+}
+
 bookingsAdminRouter.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(updateSchema, req.body, res);
   if (!id || !data) return;
+  const me = currentUser(res);
   const before = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();
   if (!before) return void res.status(404).json({ ok: false, error: "Booking not found" });
 
@@ -104,6 +149,17 @@ bookingsAdminRouter.patch("/:id", async (req, res) => {
     return void res.status(400).json({ ok: false, error: "The deposit can't be more than the total price" });
   }
 
+  const departureId = data.departureId === undefined ? before.departure_id : data.departureId;
+  const travellers = (data.adults ?? before.adults) + (data.children ?? before.children);
+  const travellersChanged = travellers !== before.adults + before.children;
+  if (departureId && (departureId !== before.departure_id || travellersChanged)) {
+    const seats = await seatsLeft(departureId, id);
+    if (!seats) return void res.status(400).json({ ok: false, error: "That departure no longer exists" });
+    if (seats.left < travellers) {
+      return void res.status(409).json({ ok: false, error: `${seats.title} has only ${Math.max(0, seats.left)} seat${seats.left === 1 ? "" : "s"} left for ${travellers} travellers. Add seats to the departure first.` });
+    }
+  }
+
   const updated = await db.transaction().execute(async (trx) => {
     const b = await trx
       .updateTable("bookings")
@@ -111,10 +167,12 @@ bookingsAdminRouter.patch("/:id", async (req, res) => {
         status: data.status,
         total_amount: total,
         deposit_amount: deposit,
+        tcs_amount: data.tcsAmount === undefined ? undefined : toPaise(data.tcsAmount)!,
         package_title: data.packageTitle,
         travel_month: data.travelMonth,
         adults: data.adults,
         children: data.children,
+        departure_id: departureId,
         updated_at: new Date(),
       })
       .where("id", "=", id)
@@ -125,16 +183,21 @@ bookingsAdminRouter.patch("/:id", async (req, res) => {
     if (b.status !== before.status) changes.push(`status ${bookingStatusLabels[before.status]} → ${bookingStatusLabels[b.status]}`);
     if (b.total_amount !== before.total_amount) changes.push(`total ${formatINR(before.total_amount)} → ${formatINR(b.total_amount)}`);
     if (b.deposit_amount !== before.deposit_amount) changes.push(`deposit ${formatINR(before.deposit_amount)} → ${formatINR(b.deposit_amount)}`);
+    if (b.tcs_amount !== before.tcs_amount) changes.push(`TCS ${formatINR(before.tcs_amount)} → ${formatINR(b.tcs_amount)}`);
     if (b.package_title !== before.package_title) changes.push(`package → ${b.package_title}`);
     if (b.travel_month !== before.travel_month) changes.push(`travel month → ${b.travel_month ?? "flexible"}`);
     if (b.adults !== before.adults || b.children !== before.children) changes.push(`travellers → ${b.adults} adults, ${b.children} children`);
-    if (changes.length) await addEvent(trx, { booking_id: id, customer_id: b.customer_id, body: `Updated: ${changes.join("; ")}.` });
+    if (b.departure_id !== before.departure_id) changes.push(b.departure_id ? `departure #${b.departure_id}` : "removed from departure");
+    if (changes.length) await addEvent(trx, { booking_id: id, customer_id: b.customer_id, author: me.name, body: `${me.name} updated: ${changes.join("; ")}.` });
     return b;
   });
 
   if (updated.status !== before.status && data.notifyCustomer) {
     const sent = await sendStatusEmail(updated);
-    if (sent) await addEvent(db, { booking_id: id, customer_id: updated.customer_id, body: `Emailed customer: booking ${updated.status}.` });
+    if (sent) {
+      const what = updated.status === "completed" ? "feedback request and referral code" : `booking ${updated.status}`;
+      await addEvent(db, { booking_id: id, customer_id: updated.customer_id, body: `Emailed customer: ${what}.` });
+    }
   }
   await respondWithBooking(res, id);
 });
@@ -155,13 +218,15 @@ bookingsAdminRouter.post("/:id/payment-request", async (req, res) => {
   if (b.status === "requested") {
     b = await db.updateTable("bookings").set({ status: "awaiting_payment", updated_at: new Date() }).where("id", "=", id).returningAll().executeTakeFirstOrThrow();
   }
-  const due = dueNow(b);
+  const instalments = await db.selectFrom("instalments").selectAll().where("booking_id", "=", id).execute();
+  const due = dueNow(b, instalments);
   if (due <= 0) return void res.status(400).json({ ok: false, error: "Nothing is due on this booking" });
 
   const sent = await sendEmail(paymentRequestEmail(b, customer, due));
   await addEvent(db, {
     booking_id: id,
     customer_id: b.customer_id,
+    author: currentUser(res).name,
     body: sent ? `Payment request for ${formatINR(due)} emailed to ${customer.email}.` : `Payment request email to ${customer.email} FAILED to send.`,
   });
   if (!sent) return void res.status(502).json({ ok: false, error: "The email could not be sent. Check the email settings and try again." });
@@ -181,7 +246,7 @@ bookingsAdminRouter.post("/:id/payments", async (req, res) => {
     res,
   );
   if (!id || !data) return;
-  const booking = await recordManualPayment(id, { ...data, amount: Math.round(data.amount * 100) });
+  const booking = await recordManualPayment(id, { ...data, amount: Math.round(data.amount * 100), author: currentUser(res).name });
   if (!booking) return void res.status(404).json({ ok: false, error: "Booking not found" });
   await respondWithBooking(res, id);
 });
@@ -192,6 +257,185 @@ bookingsAdminRouter.post("/:id/notes", async (req, res) => {
   if (!id || !data) return;
   const b = await db.selectFrom("bookings").select("id").where("id", "=", id).executeTakeFirst();
   if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
-  await db.insertInto("notes").values({ booking_id: id, kind: "note", body: data.body }).execute();
+  await db.insertInto("notes").values({ booking_id: id, kind: "note", body: data.body, author: currentUser(res).name }).execute();
   await respondWithBooking(res, id);
 });
+
+// ---------------- Instalment plan ----------------
+
+/** Replaces the whole plan (the form edits it as one list). Amounts in rupees. */
+bookingsAdminRouter.put("/:id/instalments", async (req, res) => {
+  const id = parseId(req.params.id);
+  const data = parseBody(instalmentPlanSchema, req.body, res);
+  if (!id || !data) return;
+  const b = await db.selectFrom("bookings").select(["id", "customer_id", "total_amount", "tcs_amount"]).where("id", "=", id).executeTakeFirst();
+  if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const sum = data.instalments.reduce((s, i) => s + Math.round(i.amount * 100), 0);
+  const owed = payable(b);
+  if (owed !== null && sum > owed) {
+    return void res.status(400).json({ ok: false, error: `The instalments add up to ${formatINR(sum)}, more than the ${formatINR(owed)} payable` });
+  }
+  await db.transaction().execute(async (trx) => {
+    await trx.deleteFrom("instalments").where("booking_id", "=", id).execute();
+    if (data.instalments.length) {
+      await trx
+        .insertInto("instalments")
+        .values(data.instalments.map((i) => ({ booking_id: id, label: i.label, due_date: i.dueDate, amount: Math.round(i.amount * 100) })))
+        .execute();
+    }
+    await addEvent(trx, {
+      booking_id: id,
+      customer_id: b.customer_id,
+      author: currentUser(res).name,
+      body: data.instalments.length
+        ? `Instalment plan set: ${data.instalments.map((i) => `${i.label} ₹${i.amount.toLocaleString("en-IN")} by ${formatDay(i.dueDate)}`).join("; ")}.`
+        : "Instalment plan removed.",
+    });
+  });
+  await respondWithBooking(res, id);
+});
+
+/** Emails a reminder for one instalment now. */
+bookingsAdminRouter.post("/:id/instalments/:iid/remind", async (req, res) => {
+  const id = parseId(req.params.id);
+  const iid = parseId(req.params.iid);
+  if (!id || !iid) return void res.status(404).json({ ok: false, error: "Not found" });
+  const b = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();
+  if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const customer = await db.selectFrom("customers").selectAll().where("id", "=", b.customer_id).executeTakeFirstOrThrow();
+  if (!customer.email) return void res.status(400).json({ ok: false, error: "This customer has no email address. Send it on WhatsApp instead." });
+  const plan = instalmentStates(await db.selectFrom("instalments").selectAll().where("booking_id", "=", id).execute(), b.amount_paid);
+  const i = plan.find((x) => x.id === iid);
+  if (!i) return void res.status(404).json({ ok: false, error: "Instalment not found" });
+  if (i.state === "paid") return void res.status(400).json({ ok: false, error: "That instalment is already paid" });
+  const sent = await sendEmail(instalmentReminderEmail(b, customer, { label: i.label, dueDate: i.dueDate, outstanding: i.amount - i.covered, overdue: i.state === "overdue" }));
+  if (!sent) return void res.status(502).json({ ok: false, error: "The email could not be sent. Check the email settings and try again." });
+  await db.updateTable("instalments").set({ reminder_sent_at: new Date() }).where("id", "=", iid).execute();
+  await addEvent(db, { booking_id: id, customer_id: b.customer_id, author: currentUser(res).name, body: `Reminder for ${i.label} (${formatINR(i.amount - i.covered)}) emailed to ${customer.email}.` });
+  await respondWithBooking(res, id);
+});
+
+// ---------------- Supplier costs (owner only) ----------------
+
+bookingsAdminRouter.post("/:id/costs", requireOwner, async (req, res) => {
+  const id = parseId(req.params.id);
+  const data = parseBody(costInputSchema, req.body, res);
+  if (!id || !data) return;
+  const b = await db.selectFrom("bookings").select("id").where("id", "=", id).executeTakeFirst();
+  if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  await db
+    .insertInto("booking_costs")
+    .values({ booking_id: id, category: data.category, supplier: data.supplier, amount: Math.round(data.amount * 100), paid: data.paid, note: data.note })
+    .execute();
+  await respondWithBooking(res, id);
+});
+
+bookingsAdminRouter.patch("/:id/costs/:cid", requireOwner, async (req, res) => {
+  const id = parseId(req.params.id);
+  const cid = parseId(req.params.cid);
+  const data = parseBody(z.object({ paid: z.boolean() }), req.body, res);
+  if (!id || !cid || !data) return;
+  await db.updateTable("booking_costs").set({ paid: data.paid }).where("id", "=", cid).where("booking_id", "=", id).execute();
+  await respondWithBooking(res, id);
+});
+
+bookingsAdminRouter.delete("/:id/costs/:cid", requireOwner, async (req, res) => {
+  const id = parseId(req.params.id);
+  const cid = parseId(req.params.cid);
+  if (!id || !cid) return void res.status(404).json({ ok: false, error: "Not found" });
+  await db.deleteFrom("booking_costs").where("id", "=", cid).where("booking_id", "=", id).execute();
+  await respondWithBooking(res, id);
+});
+
+// ---------------- Invoice ----------------
+
+async function invoiceData(id: number): Promise<InvoiceData | null> {
+  const b = await bookingsQuery().where("bookings.id", "=", id).executeTakeFirst();
+  if (!b || b.total_amount === null) return null;
+  const [settings, travellers, payments] = await Promise.all([
+    getSettings(),
+    db.selectFrom("travellers").select("full_name").where("booking_id", "=", id).orderBy("id").execute(),
+    db.selectFrom("payments").selectAll().where("booking_id", "=", id).where("status", "=", "paid").orderBy("paid_at").execute(),
+  ]);
+  const gst = settings.gstin && settings.gstRate > 0 ? { rate: settings.gstRate, ...splitGst(b.total_amount, settings.gstRate) } : null;
+  return {
+    number: b.invoice_number,
+    date: b.invoice_date,
+    seller: { legalName: settings.legalName, address: settings.address, gstin: settings.gstin, bankDetails: settings.bankDetails, phone: site.phone, email: site.email },
+    buyer: { name: b.customer_name, phone: b.customer_phone, email: b.customer_email },
+    booking: {
+      reference: b.reference,
+      packageTitle: b.package_title,
+      travelMonth: formatTravelMonth(b.travel_month),
+      departure: b.departure_title && b.departure_start ? `${b.departure_title} (${formatDay(b.departure_start)})` : null,
+      adults: b.adults,
+      children: b.children,
+    },
+    travellers: travellers.map((t) => t.full_name),
+    packagePrice: b.total_amount,
+    gst,
+    tcs: b.tcs_amount > 0 ? { rate: settings.tcsRate, amount: b.tcs_amount } : null,
+    total: payable(b)!,
+    paid: b.amount_paid,
+    balance: balanceOf(b)!,
+    payments: payments.map((p) => ({
+      date: (p.paid_at ?? p.created_at).toISOString(),
+      method: p.provider === "manual" ? (paymentMethodLabels[p.method as PaymentMethod] ?? p.method ?? "Other") : "Online",
+      amount: p.amount,
+      reference: p.provider_payment_id ?? p.note,
+    })),
+  };
+}
+
+bookingsAdminRouter.get("/:id/invoice", async (req, res) => {
+  const id = parseId(req.params.id);
+  const data = id && (await invoiceData(id));
+  if (!data) return void res.status(404).json({ ok: false, error: "Set the booking's price before making an invoice" });
+  res.json(data);
+});
+
+/** Gives the booking its invoice number: <prefix><financial year>/<running number>. */
+bookingsAdminRouter.post("/:id/invoice", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const settings = await getSettings();
+  const issued = await db.transaction().execute(async (trx) => {
+    const b = await trx.selectFrom("bookings").select(["id", "customer_id", "invoice_number", "total_amount"]).where("id", "=", id).forUpdate().executeTakeFirst();
+    if (!b || b.total_amount === null || b.invoice_number) return b;
+    // One invoice number at a time, so two bookings never get the same one.
+    await sql`select pg_advisory_xact_lock(7101)`.execute(trx);
+    const today = todayIST();
+    const series = `${settings.invoicePrefix}${financialYear(today)}/`;
+    const last = await trx
+      .selectFrom("bookings")
+      .select("invoice_number")
+      .where("invoice_number", "like", `${series.replace(/[\\%_]/g, (c) => `\\${c}`)}%`)
+      .orderBy("invoice_number", "desc")
+      .executeTakeFirst();
+    const next = (Number(last?.invoice_number?.slice(series.length)) || 0) + 1;
+    const number = `${series}${String(next).padStart(4, "0")}`;
+    await trx.updateTable("bookings").set({ invoice_number: number, invoice_date: today }).where("id", "=", id).execute();
+    await addEvent(trx, { booking_id: id, customer_id: b.customer_id, author: currentUser(res).name, body: `Invoice ${number} issued.` });
+    return b;
+  });
+  if (!issued) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  if (issued.total_amount === null) return void res.status(400).json({ ok: false, error: "Set the booking's price before making an invoice" });
+  res.json(await invoiceData(id));
+});
+
+// ---------------- Feedback ----------------
+
+bookingsAdminRouter.post("/:id/feedback-request", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const b = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();
+  if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const customer = await db.selectFrom("customers").selectAll().where("id", "=", b.customer_id).executeTakeFirstOrThrow();
+  if (!customer.email) return void res.status(400).json({ ok: false, error: "This customer has no email address. Send the feedback link on WhatsApp instead." });
+  const sent = await sendFeedbackRequest(b, customer);
+  if (!sent) return void res.status(502).json({ ok: false, error: "The email could not be sent. Check the email settings and try again." });
+  await addEvent(db, { booking_id: id, customer_id: b.customer_id, author: currentUser(res).name, body: `Feedback request emailed to ${customer.email}.` });
+  await respondWithBooking(res, id);
+});
+
+bookingsAdminRouter.use("/:id/travellers", travellersRouter);

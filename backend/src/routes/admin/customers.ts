@@ -2,7 +2,9 @@ import type { AdminCustomer, AdminCustomerDetail, Paged } from "@dilruba/shared/
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
+import { currentUser } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
+import { ensureReferralCode } from "../../services/crm.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminNote } from "./mappers.ts";
 
 export const customersRouter = Router();
@@ -52,10 +54,12 @@ customersRouter.get("/", async (req, res) => {
 async function loadCustomer(id: number): Promise<AdminCustomerDetail | null> {
   const c = await db.selectFrom("customers").selectAll().where("id", "=", id).executeTakeFirst();
   if (!c) return null;
-  const [leads, bookings, notes] = await Promise.all([
+  const [leads, bookings, notes, referrer, referrals] = await Promise.all([
     leadsQuery().where("leads.customer_id", "=", id).orderBy("leads.created_at", "desc").execute(),
     bookingsQuery().where("bookings.customer_id", "=", id).orderBy("bookings.created_at", "desc").execute(),
     db.selectFrom("notes").selectAll().where("customer_id", "=", id).where("kind", "=", "note").orderBy("created_at", "desc").execute(),
+    c.referred_by ? db.selectFrom("customers").select(["id", "name"]).where("id", "=", c.referred_by).executeTakeFirst() : Promise.resolve(undefined),
+    db.selectFrom("customers").select(["id", "name"]).where("referred_by", "=", id).orderBy("created_at", "desc").execute(),
   ]);
   return {
     id: c.id,
@@ -63,6 +67,9 @@ async function loadCustomer(id: number): Promise<AdminCustomerDetail | null> {
     phone: c.phone,
     email: c.email,
     createdAt: c.created_at.toISOString(),
+    referralCode: c.referral_code,
+    referredBy: referrer ?? null,
+    referrals,
     leads: leads.map(toAdminLead),
     bookings: bookings.map(toAdminBooking),
     notes: notes.map(toAdminNote),
@@ -103,6 +110,15 @@ customersRouter.post("/:id/notes", async (req, res) => {
   if (!id || !data) return;
   const c = await db.selectFrom("customers").select("id").where("id", "=", id).executeTakeFirst();
   if (!c) return void res.status(404).json({ ok: false, error: "Customer not found" });
-  await db.insertInto("notes").values({ customer_id: id, kind: "note", body: data.body }).execute();
+  await db.insertInto("notes").values({ customer_id: id, kind: "note", body: data.body, author: currentUser(res).name }).execute();
   res.json(await loadCustomer(id));
+});
+
+/** Gives the customer a referral code to share (if they don't have one yet). */
+customersRouter.post("/:id/referral-code", async (req, res) => {
+  const id = parseId(req.params.id);
+  const c = id && (await db.selectFrom("customers").select("id").where("id", "=", id).executeTakeFirst());
+  if (!c) return void res.status(404).json({ ok: false, error: "Customer not found" });
+  await ensureReferralCode(c.id);
+  res.json(await loadCustomer(c.id));
 });

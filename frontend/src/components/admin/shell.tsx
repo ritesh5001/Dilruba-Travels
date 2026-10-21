@@ -1,32 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarCheck, ExternalLink, Inbox, LayoutDashboard, LogOut, Package, Users } from "lucide-react";
+import {
+  BarChart3,
+  CalendarCheck,
+  ExternalLink,
+  FileText,
+  Inbox,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Package,
+  PlaneTakeoff,
+  Settings,
+  UserCog,
+  Users,
+} from "lucide-react";
+import type { Me } from "@dilruba/shared/ops";
 import { ApiError, adminFetch, clearAdminCache } from "@/lib/admin-api";
 
 const nav = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/leads", label: "Leads", icon: Inbox },
+  { href: "/admin/quotes", label: "Quotes", icon: FileText },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck },
+  { href: "/admin/departures", label: "Departures", icon: PlaneTakeoff },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/packages", label: "Packages", icon: Package },
+  { href: "/admin/reports", label: "Reports", icon: BarChart3, owner: true },
+  { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone, owner: true },
+  { href: "/admin/staff", label: "Staff", icon: UserCog, owner: true },
+  { href: "/admin/settings", label: "Settings", icon: Settings, owner: true },
 ] as const;
+
+const MeContext = createContext<Me | null>(null);
+
+/** The logged-in person (null while loading). Use it to hide owner-only parts of a page. */
+export function useMe() {
+  return useContext(MeContext);
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLogin = pathname === "/admin/login";
-  const [email, setEmail] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
 
   // Checked once when the panel opens (not on every page), in parallel with the page's own data:
   // waiting for it first added a full round trip to every click. Any page request that comes
   // back "not logged in" also sends the browser to the login page (see useAdminData).
   useEffect(() => {
     if (isLogin) return;
-    adminFetch<{ email: string }>("/me")
-      .then((me) => setEmail(me.email))
+    adminFetch<Me>("/me")
+      .then((m) => setMe({ id: m.id, name: m.name, email: m.email, role: m.role }))
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
           router.replace(`/admin/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
@@ -40,7 +68,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   async function logout() {
     await adminFetch("/logout", { method: "POST" }).catch(() => {});
     clearAdminCache();
-    setEmail(null);
+    setMe(null);
     router.replace("/admin/login");
   }
 
@@ -48,7 +76,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-full flex-1 flex-col bg-sand lg:flex-row">
-      <aside className="border-b border-line bg-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r">
+      <aside className="border-b border-line bg-white print:hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-5 lg:py-5">
           <Link href="/admin" className="font-display text-lg font-semibold">
             Dilruba <span className="text-brand">CRM</span>
@@ -57,8 +85,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <LogOut className="size-4" aria-hidden /> Log out
           </button>
         </div>
-        <nav aria-label="Admin" className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-visible lg:px-3 lg:pb-0">
-          {nav.map(({ href, label, icon: Icon }) => (
+        <nav aria-label="Admin" className="no-scrollbar flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-1 lg:flex-col lg:overflow-y-auto lg:px-3 lg:pb-0">
+          {nav.filter((n) => !("owner" in n) || me?.role === "owner").map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -75,13 +103,16 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </Link>
         </nav>
         <div className="hidden border-t border-line px-5 py-4 lg:block">
-          <p className="truncate text-xs text-muted" title={email ?? ""}>{email ?? " "}</p>
+          <p className="truncate text-sm font-medium" title={me?.email ?? ""}>{me?.name ?? " "}</p>
+          <p className="truncate text-xs text-muted">{me ? (me.role === "owner" ? "Owner" : "Staff") : " "}</p>
           <button type="button" onClick={logout} className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
             <LogOut className="size-4" aria-hidden /> Log out
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">{children}</main>
+      <main className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-8 print:p-0">
+        <MeContext value={me}>{children}</MeContext>
+      </main>
     </div>
   );
 }

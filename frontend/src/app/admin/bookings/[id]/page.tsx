@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Check, Copy, Loader2, Mail, Phone } from "lucide-react";
+import { Check, Copy, FileText, Loader2, Mail, Phone } from "lucide-react";
 import {
   bookingStatuses,
   bookingStatusLabels,
@@ -14,9 +14,11 @@ import {
   type BookingStatus,
 } from "@dilruba/shared/booking";
 import type { AdminBookingDetail } from "@dilruba/shared/crm";
+import { formatDay, type AdminDeparture } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
-import { WhatsAppIcon } from "@/components/icons";
-import { BookingBadge, Card, Empty, ErrorBox, Field, Loading, NotesPanel, PageHeader, customerWhatsapp, formatDate } from "@/components/admin/ui";
+import { bookingTemplates } from "@/lib/whatsapp-templates";
+import { CostsCard, FeedbackCard, InstalmentsCard, TravellersCard } from "@/components/admin/booking-sections";
+import { BookingBadge, Card, Empty, ErrorBox, Field, Loading, NotesPanel, PageHeader, WhatsAppTemplates, formatDate } from "@/components/admin/ui";
 
 const rupees = (paise: number | null) => (paise === null ? "" : String(paise / 100));
 
@@ -47,31 +49,29 @@ export default function BookingDetailPage() {
         subtitle={<>{b.packageTitle} · created {formatDate(b.createdAt, true)} · <BookingBadge status={b.status} /></>}
         actions={
           <>
-            <a
-              href={customerWhatsapp(b.customer.phone, `Assalamu Alaikum ${b.customer.name.split(" ")[0]}, this is Dilruba Travels about your booking ${b.reference}.`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-whatsapp !py-2"
-            >
-              <WhatsAppIcon className="size-4" /> WhatsApp
-            </a>
+            <WhatsAppTemplates phone={b.customer.phone} templates={bookingTemplates(b)} />
             <a href={`tel:${b.customer.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
+            {b.totalAmount !== null && (
+              <Link href={`/admin/bookings/${b.id}/invoice`} className="btn btn-outline !py-2">
+                <FileText className="size-4" aria-hidden /> {b.invoiceNumber ? "Invoice" : "Invoice / receipt"}
+              </Link>
+            )}
           </>
         }
       />
       {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
       {flash && <p role="status" className="mb-4 rounded-xl bg-[#25d366]/10 px-4 py-3 text-sm font-medium text-[#0f7a3a]">{flash}</p>}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
         <div className="space-y-6">
-          <PricingCard b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Price saved.")} />
+          <PricingCard key={`${b.tcsAmount}-${b.departure?.id}`} b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Price saved.")} />
 
           <Card title="Payments">
             <div className="mb-4 grid gap-4 rounded-xl bg-sand p-4 sm:grid-cols-4">
-              <Field label="Total">{formatINR(b.totalAmount)}</Field>
+              <Field label="Total">{formatINR(b.totalAmount)}{b.tcsAmount > 0 && <span className="block text-xs font-normal text-muted">+ {formatINR(b.tcsAmount)} TCS</span>}</Field>
               <Field label="Deposit">{formatINR(b.depositAmount)}</Field>
               <Field label="Paid">{formatINR(b.amountPaid)}</Field>
-              <Field label="Balance">{b.totalAmount === null ? "—" : formatINR(Math.max(0, b.totalAmount - b.amountPaid))}</Field>
+              <Field label="Balance">{b.totalAmount === null ? "—" : formatINR(Math.max(0, b.totalAmount + b.tcsAmount - b.amountPaid))}</Field>
             </div>
             {b.payments.length === 0 ? (
               <Empty>No payments yet.</Empty>
@@ -105,6 +105,9 @@ export default function BookingDetailPage() {
             <RecordPayment busy={action.busy} onSave={(body) => mutate("/payments", "POST", body, "Payment recorded.")} />
           </Card>
 
+          <InstalmentsCard key={`plan-${b.instalments.map((i) => i.id).join()}`} b={b} busy={action.busy} mutate={mutate} />
+          <TravellersCard b={b} busy={action.busy} mutate={mutate} />
+          {b.costs && <CostsCard b={b} busy={action.busy} mutate={mutate} />}
           <NotesPanel notes={b.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
         </div>
 
@@ -138,12 +141,16 @@ export default function BookingDetailPage() {
           </Card>
 
           <StatusCard key={b.status} b={b} busy={action.busy} onSave={(status, notifyCustomer) => mutate("", "PATCH", { status, notifyCustomer }, "Status updated.")} />
+          <FeedbackCard b={b} busy={action.busy} mutate={mutate} />
 
           <Card title="Trip">
             <div className="grid gap-3">
               <Field label="Package">{b.packageSlug && b.packageCategory ? <Link href={`/packages/${b.packageCategory}/${b.packageSlug}`} target="_blank" className="hover:text-brand">{b.packageTitle}</Link> : b.packageTitle}</Field>
               <Field label="Travel month">{formatTravelMonth(b.travelMonth)}</Field>
+              {b.departure && <Field label="Group date"><Link href={`/admin/departures/${b.departure.id}`} className="hover:text-brand">{b.departure.title} · {formatDay(b.departure.startDate)}</Link></Field>}
               <Field label="Travellers">{b.adults} adults, {b.children} children</Field>
+              {b.quoteId && <Field label="From quote"><Link href={`/admin/quotes/${b.quoteId}`} className="hover:text-brand">View quote</Link></Field>}
+              {b.invoiceNumber && <Field label="Invoice">{b.invoiceNumber}</Field>}
               <Field label="Customer notes"><span className="whitespace-pre-wrap">{b.customerNotes ?? "—"}</span></Field>
               {b.leadId && <Field label="From enquiry"><Link href={`/admin/leads/${b.leadId}`} className="hover:text-brand">#{b.leadId}</Link></Field>}
             </div>
@@ -163,10 +170,14 @@ export default function BookingDetailPage() {
 }
 
 function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean; onSave: (body: unknown) => Promise<boolean> }) {
+  const { data: departures } = useAdminData<AdminDeparture[]>("/departures");
+  const [tcs, setTcs] = useState(rupees(b.tcsAmount));
+  // Controlled: the list loads after the form, and an uncontrolled select would lose its value.
+  const [departureId, setDepartureId] = useState(b.departure ? String(b.departure.id) : "");
   return (
     <Card title="Price">
       <form
-        key={`${b.totalAmount}-${b.depositAmount}-${b.adults}-${b.children}-${b.travelMonth}`}
+        key={`${b.totalAmount}-${b.depositAmount}-${b.tcsAmount}-${b.adults}-${b.children}-${b.travelMonth}-${b.departure?.id}`}
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
@@ -174,9 +185,11 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
           void onSave({
             totalAmount: num("total"),
             depositAmount: num("deposit"),
+            tcsAmount: Number(tcs) || 0,
             adults: Number(f.get("adults")),
             children: Number(f.get("children")),
             travelMonth: f.get("travelMonth") || null,
+            departureId: departureId ? Number(departureId) : null,
           });
         }}
         className="grid gap-4 sm:grid-cols-2"
@@ -201,7 +214,29 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
           <label htmlFor="bk-month" className="label">Travel month</label>
           <input id="bk-month" name="travelMonth" type="month" defaultValue={b.travelMonth ?? ""} className="field" />
         </div>
-        <div className="flex items-end">
+        <div>
+          <label htmlFor="bk-departure" className="label">Group date</label>
+          <select id="bk-departure" value={departureId} onChange={(e) => setDepartureId(e.target.value)} className="field appearance-none">
+            <option value="">No fixed group date</option>
+            {b.departure && !departures?.some((d) => d.id === b.departure!.id) && <option value={b.departure.id}>{b.departure.title} · {formatDay(b.departure.startDate)}</option>}
+            {departures?.map((d) => (
+              <option key={d.id} value={d.id}>{d.title} · {formatDay(d.startDate)} · {Math.max(0, d.seats - d.booked)} left</option>
+            ))}
+          </select>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor="bk-tcs" className="label">TCS collected (₹) <span className="font-normal text-muted">charged on top of the total</span></label>
+          <div className="flex gap-2">
+            <input id="bk-tcs" type="number" min="0" step="1" inputMode="numeric" value={tcs} onChange={(e) => setTcs(e.target.value)} placeholder="0" className="field" />
+            {b.suggestedTcs > 0 && rupees(b.suggestedTcs) !== tcs && (
+              <button type="button" onClick={() => setTcs(rupees(b.suggestedTcs))} className="btn btn-outline shrink-0 !py-2 text-sm">
+                Use {formatINR(b.suggestedTcs)}
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted">Overseas packages: the TCS rate is set in Settings (confirm with your CA). The customer can claim it against their income tax.</p>
+        </div>
+        <div className="flex items-end sm:col-span-2">
           <button type="submit" disabled={busy} className="btn btn-outline w-full disabled:opacity-50">Save</button>
         </div>
       </form>

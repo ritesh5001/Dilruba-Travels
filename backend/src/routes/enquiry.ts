@@ -5,7 +5,7 @@ import { notifyAdmin } from "../email/send.ts";
 import { adminNewLeadEmail } from "../email/templates.ts";
 import { rateLimit } from "../lib/auth.ts";
 import { parseBody } from "../lib/util.ts";
-import { upsertCustomer } from "../services/crm.ts";
+import { addEvent, applyReferral, upsertCustomer } from "../services/crm.ts";
 
 export const enquiryRouter = Router();
 
@@ -16,7 +16,7 @@ enquiryRouter.post(
     const data = parseBody(enquirySchema, req.body, res);
     if (!data) return;
 
-    const { website, ...enquiry } = data;
+    const { website, referralCode, ...enquiry } = data;
 
     // Bots fill the hidden honeypot field; pretend success and drop it.
     if (website) {
@@ -26,6 +26,7 @@ enquiryRouter.post(
 
     const { lead, customer } = await db.transaction().execute(async (trx) => {
       const customer = await upsertCustomer(trx, { name: enquiry.name, phone: enquiry.phone });
+      const referrer = await applyReferral(trx, customer.id, referralCode);
       const lead = await trx
         .insertInto("leads")
         .values({
@@ -40,6 +41,7 @@ enquiryRouter.post(
         })
         .returningAll()
         .executeTakeFirstOrThrow();
+      if (referrer) await addEvent(trx, { lead_id: lead.id, body: `Referred by ${referrer.name} (code ${referralCode!.toUpperCase()}).` });
       return { lead, customer };
     });
 

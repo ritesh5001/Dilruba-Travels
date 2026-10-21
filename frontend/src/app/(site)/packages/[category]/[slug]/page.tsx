@@ -12,6 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react";
+import { formatDay } from "@dilruba/shared/ops";
 import { PageHero } from "@/components/page-hero";
 import { PackageCard } from "@/components/package-card";
 import { SmartImage } from "@/components/smart-image";
@@ -122,6 +123,24 @@ export default async function PackagePage(props: PageProps<"/packages/[category]
             <p className="mt-2 text-sm text-muted">
               Prices change with dates and hotel availability. Message us for today&apos;s best price.
             </p>
+            {p.departures && p.departures.length > 0 && (
+              <div className="mt-5 border-t border-line pt-4">
+                <p className="text-sm font-semibold">Upcoming group dates</p>
+                <ul className="mt-2 space-y-2">
+                  {p.departures.slice(0, 4).map((d) => (
+                    <li key={d.id} className="flex items-center justify-between gap-3 text-sm">
+                      <span>
+                        <CalendarDays className="mr-1.5 inline size-4 text-brand" aria-hidden />
+                        {formatDay(d.startDate)}
+                      </span>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${d.seatsLeft === 0 ? "bg-ink/5 text-muted" : d.seatsLeft <= 5 ? "bg-brand/10 text-brand" : "bg-[#25d366]/15 text-[#0f7a3a]"}`}>
+                        {d.seatsLeft === 0 ? "Full" : d.seatsLeft <= 5 ? `Only ${d.seatsLeft} left` : `${d.seatsLeft} seats left`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="mt-6 grid gap-3">
               <Link href={`/book/${p.category}/${p.slug}`} className="btn btn-primary">
                 Book this package

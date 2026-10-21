@@ -9,6 +9,9 @@ import { bookingsRouter } from "./routes/bookings.ts";
 import { catalogRouter } from "./routes/catalog.ts";
 import { enquiryRouter } from "./routes/enquiry.ts";
 import { paymentsRouter } from "./routes/payments.ts";
+import { feedbackRouter } from "./routes/feedback.ts";
+import { quotesPublicRouter } from "./routes/quotes.ts";
+import { startJobs } from "./services/jobs.ts";
 
 // Comma-separated list of sites allowed to call the API directly from the browser.
 // The Next.js frontend proxies /api/* server-side, so this only matters for other clients.
@@ -51,6 +54,8 @@ app.use(express.json({ limit: "256kb" }));
 
 app.use("/api/enquiry", enquiryRouter);
 app.use("/api/bookings", bookingsRouter);
+app.use("/api/quotes", quotesPublicRouter);
+app.use("/api/feedback", feedbackRouter);
 app.use("/api", catalogRouter);
 app.use("/api/admin", adminRouter);
 
@@ -82,6 +87,8 @@ for (let attempt = 1; ; attempt++) {
     process.exit(1);
   }
 }
+
+startJobs();
 
 const server = app.listen(config.PORT, () => {
   console.info(`Backend listening on http://localhost:${config.PORT}`);

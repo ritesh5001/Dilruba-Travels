@@ -10,6 +10,7 @@ import {
   type CheckoutSession,
   type PublicBooking,
 } from "@dilruba/shared/booking";
+import { formatDay } from "@dilruba/shared/ops";
 import { site, whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
@@ -187,9 +188,35 @@ export function BookingStatus() {
         <dl className="mt-6 grid gap-x-6 gap-y-4 border-t border-line pt-6 text-sm sm:grid-cols-2">
           <div><dt className="text-muted">Package</dt><dd className="mt-0.5 font-semibold">{booking.packageTitle}</dd></div>
           <div><dt className="text-muted">Lead traveller</dt><dd className="mt-0.5 font-semibold">{booking.name}</dd></div>
-          <div><dt className="text-muted">Travel month</dt><dd className="mt-0.5 font-semibold">{formatTravelMonth(booking.travelMonth)}</dd></div>
+          {booking.departure ? (
+            <div><dt className="text-muted">Travel dates</dt><dd className="mt-0.5 font-semibold">{formatDay(booking.departure.startDate)}{booking.departure.endDate ? ` – ${formatDay(booking.departure.endDate)}` : ""}</dd></div>
+          ) : (
+            <div><dt className="text-muted">Travel month</dt><dd className="mt-0.5 font-semibold">{formatTravelMonth(booking.travelMonth)}</dd></div>
+          )}
           <div><dt className="text-muted">Travellers</dt><dd className="mt-0.5 font-semibold">{travellers}</dd></div>
         </dl>
+
+        {booking.instalments.length > 0 && (
+          <div className="mt-8">
+            <h3 className="font-semibold">Payment schedule</h3>
+            <ul className="mt-3 divide-y divide-line rounded-2xl border border-line text-sm">
+              {booking.instalments.map((i, n) => (
+                <li key={n} className="flex items-center justify-between gap-4 px-4 py-3">
+                  <span>
+                    <span className="font-medium">{i.label}</span>
+                    <span className="block text-muted">Due {formatDay(i.dueDate)}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="font-semibold">{formatINR(i.amount)}</span>
+                    <span className={`block text-xs font-semibold ${i.state === "paid" ? "text-[#0f7a3a]" : i.state === "overdue" ? "text-brand" : "text-muted"}`}>
+                      {i.state === "paid" ? "Paid" : i.state === "overdue" ? "Overdue" : i.state === "part_paid" ? "Part paid" : "Upcoming"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {booking.payments.length > 0 && (
           <div className="mt-8">
@@ -223,6 +250,9 @@ export function BookingStatus() {
           <>
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between"><dt className="text-muted">Total price</dt><dd className="font-semibold">{formatINR(booking.totalAmount)}</dd></div>
+              {booking.tcsAmount > 0 && (
+                <div className="flex justify-between gap-3"><dt className="text-muted">TCS <span className="text-xs">(claim against income tax)</span></dt><dd className="font-semibold">{formatINR(booking.tcsAmount)}</dd></div>
+              )}
               {booking.depositAmount !== null && (
                 <div className="flex justify-between"><dt className="text-muted">Booking deposit</dt><dd className="font-semibold">{formatINR(booking.depositAmount)}</dd></div>
               )}

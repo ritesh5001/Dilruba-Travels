@@ -25,6 +25,8 @@ export const enquirySchema = z.object({
   travellers: z.coerce.number().int().min(1).max(99).optional(),
   message: z.string().trim().max(1000).optional(),
   source: z.string().trim().max(200).optional(),
+  // A past customer's referral code, from a ?ref= link they shared.
+  referralCode: z.string().trim().max(20).optional(),
   // Honeypot: real visitors never see or fill this field.
   website: z.string().max(0).optional(),
 });

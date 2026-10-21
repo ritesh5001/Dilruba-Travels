@@ -5,6 +5,9 @@ import type { Database } from "./schema.ts";
 
 // Postgres returns bigint (int8) as a string; our amounts are paise and stay far below 2^53.
 pg.types.setTypeParser(pg.types.builtins.INT8, (v) => Number(v));
+// Calendar dates (due dates, birthdays, departures) stay "YYYY-MM-DD" strings: as Date objects
+// they would shift by the server's timezone.
+pg.types.setTypeParser(pg.types.builtins.DATE, (v) => v);
 
 const SLOW_QUERY_MS = 300;
 

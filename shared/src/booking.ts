@@ -56,6 +56,9 @@ export const bookingRequestSchema = z.object({
   adults: z.coerce.number().int().min(1, "At least one adult must travel").max(50),
   children: z.coerce.number().int().min(0).max(50).default(0),
   notes: z.string().trim().max(1000).optional(),
+  // A fixed group date the customer picked, if the package has any.
+  departureId: z.coerce.number().int().positive().optional(),
+  referralCode: z.string().trim().max(20).optional(),
   // Honeypot: real visitors never see or fill this field.
   website: z.string().max(0).optional(),
 });
@@ -79,7 +82,11 @@ export type PublicBooking = {
   name: string;
   totalAmount: number | null;
   depositAmount: number | null;
+  /** TCS charged on top of the total (overseas packages). */
+  tcsAmount: number;
   amountPaid: number;
+  departure: { title: string; startDate: string; endDate: string | null } | null;
+  instalments: { label: string; dueDate: string; amount: number; state: "paid" | "part_paid" | "due" | "overdue" }[];
   /** What "Pay now" charges: the rest of the deposit, or the balance once the deposit is in. */
   dueNow: number;
   balance: number | null;

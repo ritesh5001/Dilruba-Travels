@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { enquirySchema, enquiryToWhatsapp, services, type Enquiry } from "@dilruba/shared/enquiry";
+import { getReferral } from "@/lib/referral";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
@@ -26,7 +27,7 @@ function useSubmit(source: string, onSent?: () => void) {
   const [sent, setSent] = useState<Partial<Enquiry>>({});
 
   async function submit(data: Record<string, unknown>) {
-    const parsed = enquirySchema.safeParse({ ...data, source });
+    const parsed = enquirySchema.safeParse({ ...data, source, referralCode: getReferral() });
     if (!parsed.success) {
       setStatus({ state: "error", message: parsed.error.issues[0]?.message ?? "Please check the form" });
       return;

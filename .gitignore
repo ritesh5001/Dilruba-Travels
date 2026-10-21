@@ -44,3 +44,4 @@ next-env.d.ts
 
 # local database (npm run db:local)
 .data/
+.gstack/

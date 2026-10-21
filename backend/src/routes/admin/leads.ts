@@ -1,11 +1,14 @@
-import { leadStatuses } from "@dilruba/shared/booking";
+import { leadStatuses, leadStatusLabels, phoneSchema } from "@dilruba/shared/booking";
 import type { AdminLeadDetail, Paged, AdminLead } from "@dilruba/shared/crm";
+import { services } from "@dilruba/shared/enquiry";
 import { Router } from "express";
+import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
+import { currentUser } from "../../lib/auth.ts";
 import { accessToken, bookingReference, likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
-import { addEvent } from "../../services/crm.ts";
-import { leadsQuery, toAdminLead, toAdminNote } from "./mappers.ts";
+import { addEvent, upsertCustomer } from "../../services/crm.ts";
+import { leadsQuery, quotesQuery, toAdminLead, toAdminNote, toAdminQuote } from "./mappers.ts";
 
 export const leadsRouter = Router();
 
@@ -13,9 +16,14 @@ leadsRouter.get("/", async (req, res) => {
   const page = pageParam(req.query.page);
   const status = leadStatuses.find((s) => s === req.query.status);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const me = currentUser(res);
 
   let query = leadsQuery();
   if (status) query = query.where("leads.status", "=", status);
+  // ?status=followup: every open lead whose follow-up date has arrived.
+  if (req.query.status === "followup") query = query.where("leads.follow_up_at", "<=", sql<Date>`now()`).where("leads.status", "not in", ["converted", "lost"]);
+  if (req.query.assigned === "me") query = query.where("leads.assigned_to", "=", me.id);
+  if (req.query.assigned === "none") query = query.where("leads.assigned_to", "is", null);
   if (q) {
     const pattern = likePattern(q);
     query = query.where((eb) =>
@@ -28,22 +36,73 @@ leadsRouter.get("/", async (req, res) => {
     );
   }
 
+  const order = req.query.status === "followup" ? query.orderBy("leads.follow_up_at") : query.orderBy("leads.created_at", "desc");
   const [rows, count] = await Promise.all([
-    query.orderBy("leads.created_at", "desc").limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE).execute(),
+    order.limit(PAGE_SIZE).offset((page - 1) * PAGE_SIZE).execute(),
     query.clearSelect().select((eb) => eb.fn.countAll<number>().as("n")).executeTakeFirstOrThrow(),
   ]);
   const body: Paged<AdminLead> = { items: rows.map(toAdminLead), total: Number(count.n), page, pageSize: PAGE_SIZE };
   res.json(body);
 });
 
+/** A lead taken by phone, WhatsApp or at the office. */
+leadsRouter.post("/", async (req, res) => {
+  const data = parseBody(
+    z.object({
+      name: z.string().trim().min(2, "Enter their name").max(80),
+      phone: phoneSchema,
+      email: z.union([z.email("Enter a valid email").trim().max(160), z.literal("")]).optional(),
+      service: z.enum(services),
+      packageName: z.string().trim().max(120).optional(),
+      travelMonth: z.string().trim().max(20).optional(),
+      travellers: z.coerce.number().int().min(1).max(99).optional(),
+      message: z.string().trim().max(1000).optional(),
+      source: z.string().trim().min(1).max(80),
+      assignToMe: z.boolean().default(true),
+    }),
+    req.body,
+    res,
+  );
+  if (!data) return;
+  const me = currentUser(res);
+  const lead = await db.transaction().execute(async (trx) => {
+    const customer = await upsertCustomer(trx, { name: data.name, phone: data.phone, email: data.email || null });
+    const lead = await trx
+      .insertInto("leads")
+      .values({
+        customer_id: customer.id,
+        service: data.service,
+        package_name: data.packageName || null,
+        travel_month: data.travelMonth || null,
+        travellers: data.travellers ?? null,
+        message: data.message || null,
+        source: data.source,
+        status: "contacted",
+        assigned_to: data.assignToMe && me.id ? me.id : null,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await addEvent(trx, { lead_id: lead.id, author: me.name, body: `Lead added by ${me.name} (${data.source}).` });
+    return lead;
+  });
+  res.status(201).json({ ok: true, id: lead.id });
+});
+
 async function loadLead(id: number): Promise<AdminLeadDetail | null> {
   const row = await leadsQuery().where("leads.id", "=", id).executeTakeFirst();
   if (!row) return null;
-  const [notes, bookings] = await Promise.all([
+  const [notes, bookings, quotes, referrer] = await Promise.all([
     db.selectFrom("notes").selectAll().where("lead_id", "=", id).orderBy("created_at", "desc").execute(),
     db.selectFrom("bookings").select(["id", "reference", "status"]).where("lead_id", "=", id).execute(),
+    quotesQuery().where("quotes.lead_id", "=", id).orderBy("quotes.created_at", "desc").execute(),
+    db
+      .selectFrom("customers as c")
+      .innerJoin("customers as r", "r.id", "c.referred_by")
+      .select(["r.id", "r.name"])
+      .where("c.id", "=", row.customer_id)
+      .executeTakeFirst(),
   ]);
-  return { ...toAdminLead(row), notes: notes.map(toAdminNote), bookings };
+  return { ...toAdminLead(row), notes: notes.map(toAdminNote), bookings, quotes: quotes.map(toAdminQuote), referredBy: referrer ?? null };
 }
 
 leadsRouter.get("/:id", async (req, res) => {
@@ -56,21 +115,63 @@ leadsRouter.get("/:id", async (req, res) => {
   res.json(lead);
 });
 
+const updateSchema = z.object({
+  status: z.enum(leadStatuses).optional(),
+  lostReason: z.string().trim().max(120).nullable().optional(),
+  // ISO date-time, or null to clear.
+  followUpAt: z.iso.datetime({ offset: true }).nullable().optional(),
+  followUpNote: z.string().trim().max(300).nullable().optional(),
+  assignedTo: z.coerce.number().int().positive().nullable().optional(),
+});
+
 leadsRouter.patch("/:id", async (req, res) => {
   const id = parseId(req.params.id);
-  const data = parseBody(z.object({ status: z.enum(leadStatuses) }), req.body, res);
+  const data = parseBody(updateSchema, req.body, res);
   if (!id || !data) return;
-  const before = await db.selectFrom("leads").select(["status", "customer_id"]).where("id", "=", id).executeTakeFirst();
+  const me = currentUser(res);
+  const before = await leadsQuery().where("leads.id", "=", id).executeTakeFirst();
   if (!before) {
     res.status(404).json({ ok: false, error: "Lead not found" });
     return;
   }
-  if (before.status !== data.status) {
-    await db.transaction().execute(async (trx) => {
-      await trx.updateTable("leads").set({ status: data.status, updated_at: new Date() }).where("id", "=", id).execute();
-      await addEvent(trx, { lead_id: id, body: `Status changed from ${before.status} to ${data.status}.` });
-    });
+  if (data.status === "lost" && !data.lostReason && !before.lost_reason) {
+    return void res.status(400).json({ ok: false, error: "Choose why this lead was lost" });
   }
+  let assignee: { id: number; name: string } | null | undefined;
+  if (data.assignedTo !== undefined) {
+    assignee = data.assignedTo === null ? null : ((await db.selectFrom("users").select(["id", "name"]).where("id", "=", data.assignedTo).where("active", "=", true).executeTakeFirst()) ?? undefined);
+    if (assignee === undefined) return void res.status(400).json({ ok: false, error: "That staff member doesn't exist" });
+  }
+
+  const changes: string[] = [];
+  const status = data.status ?? before.status;
+  if (status !== before.status) changes.push(`status ${leadStatusLabels[before.status]} → ${leadStatusLabels[status]}`);
+  // A lead that's no longer lost forgets the reason; a closed lead needs no follow-up.
+  const lostReason = status === "lost" ? (data.lostReason ?? before.lost_reason) : null;
+  if (lostReason && lostReason !== before.lost_reason) changes.push(`lost reason: ${lostReason}`);
+  const closed = status === "lost" || status === "converted";
+  const followUpAt = closed ? null : data.followUpAt === undefined ? before.follow_up_at : data.followUpAt ? new Date(data.followUpAt) : null;
+  const followUpNote = closed ? null : data.followUpNote === undefined ? before.follow_up_note : data.followUpNote || null;
+  if ((followUpAt?.getTime() ?? null) !== (before.follow_up_at?.getTime() ?? null)) {
+    changes.push(followUpAt ? `follow-up set for ${followUpAt.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}` : "follow-up cleared");
+  }
+  if (assignee !== undefined && (assignee?.id ?? null) !== before.assigned_to) changes.push(assignee ? `assigned to ${assignee.name}` : "unassigned");
+
+  await db.transaction().execute(async (trx) => {
+    await trx
+      .updateTable("leads")
+      .set({
+        status,
+        lost_reason: lostReason,
+        follow_up_at: followUpAt,
+        follow_up_note: followUpNote,
+        assigned_to: assignee === undefined ? before.assigned_to : (assignee?.id ?? null),
+        updated_at: new Date(),
+      })
+      .where("id", "=", id)
+      .execute();
+    if (changes.length) await addEvent(trx, { lead_id: id, author: me.name, body: `${me.name}: ${changes.join("; ")}.` });
+  });
   res.json(await loadLead(id));
 });
 
@@ -83,7 +184,7 @@ leadsRouter.post("/:id/notes", async (req, res) => {
     res.status(404).json({ ok: false, error: "Lead not found" });
     return;
   }
-  await db.insertInto("notes").values({ lead_id: id, kind: "note", body: data.body }).execute();
+  await db.insertInto("notes").values({ lead_id: id, kind: "note", body: data.body, author: currentUser(res).name }).execute();
   res.json(await loadLead(id));
 });
 
@@ -93,6 +194,7 @@ leadsRouter.post("/:id/convert", async (req, res) => {
   if (!id) return void res.status(404).json({ ok: false, error: "Lead not found" });
   const lead = await db.selectFrom("leads").selectAll().where("id", "=", id).executeTakeFirst();
   if (!lead) return void res.status(404).json({ ok: false, error: "Lead not found" });
+  const me = currentUser(res);
 
   const booking = await db.transaction().execute(async (trx) => {
     const booking = await trx
@@ -110,9 +212,9 @@ leadsRouter.post("/:id/convert", async (req, res) => {
       })
       .returning(["id", "reference"])
       .executeTakeFirstOrThrow();
-    await trx.updateTable("leads").set({ status: "converted", updated_at: new Date() }).where("id", "=", id).execute();
-    await addEvent(trx, { lead_id: id, body: `Converted to booking ${booking.reference}.` });
-    await addEvent(trx, { booking_id: booking.id, customer_id: lead.customer_id, body: `Created from enquiry #${id}.` });
+    await trx.updateTable("leads").set({ status: "converted", follow_up_at: null, follow_up_note: null, updated_at: new Date() }).where("id", "=", id).execute();
+    await addEvent(trx, { lead_id: id, author: me.name, body: `Converted to booking ${booking.reference} by ${me.name}.` });
+    await addEvent(trx, { booking_id: booking.id, customer_id: lead.customer_id, author: me.name, body: `Created from enquiry #${id}.` });
     return booking;
   });
   res.status(201).json({ ok: true, bookingId: booking.id });

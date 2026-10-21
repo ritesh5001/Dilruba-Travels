@@ -1,7 +1,8 @@
 import { bookingStatusLabels, formatINR, formatTravelMonth, type BookingStatus } from "@dilruba/shared/booking";
+import { formatDay, quoteTotal } from "@dilruba/shared/ops";
 import { site, whatsappLink } from "@dilruba/shared/site";
 import { config } from "../config.ts";
-import type { Booking, Customer, Lead } from "../db/schema.ts";
+import type { Booking, Customer, Lead, Quote } from "../db/schema.ts";
 import { escapeHtml as e } from "../lib/util.ts";
 import type { Email } from "./send.ts";
 
@@ -9,6 +10,18 @@ type Rows = [label: string, value: string][];
 
 export function bookingLink(b: Pick<Booking, "reference" | "access_token">) {
   return `${config.PUBLIC_SITE_URL}/booking?ref=${b.reference}&t=${encodeURIComponent(b.access_token)}`;
+}
+
+export function feedbackLink(b: Pick<Booking, "reference" | "access_token">) {
+  return `${config.PUBLIC_SITE_URL}/feedback?ref=${b.reference}&t=${encodeURIComponent(b.access_token)}`;
+}
+
+export function quoteLink(q: Pick<Quote, "reference" | "access_token">) {
+  return `${config.PUBLIC_SITE_URL}/quote?ref=${q.reference}&t=${encodeURIComponent(q.access_token)}`;
+}
+
+export function referralLink(code: string) {
+  return `${config.PUBLIC_SITE_URL}/?ref=${encodeURIComponent(code)}`;
 }
 
 function adminLink(path: string) {
@@ -67,10 +80,15 @@ function bookingRows(b: Booking): Rows {
     ["Travellers", `${b.adults} adult${b.adults === 1 ? "" : "s"}${b.children ? `, ${b.children} child${b.children === 1 ? "" : "ren"}` : ""}`],
   ];
   if (b.total_amount !== null) rows.push(["Total price", formatINR(b.total_amount)]);
+  if (b.tcs_amount > 0) rows.push(["TCS (adjustable against your income tax)", formatINR(b.tcs_amount)]);
   if (b.deposit_amount !== null) rows.push(["Booking deposit", formatINR(b.deposit_amount)]);
   if (b.amount_paid > 0) rows.push(["Paid so far", formatINR(b.amount_paid)]);
-  if (b.total_amount !== null && b.amount_paid > 0) rows.push(["Balance", formatINR(Math.max(0, b.total_amount - b.amount_paid))]);
+  if (b.total_amount !== null && b.amount_paid > 0) rows.push(["Balance", formatINR(balance(b))]);
   return rows;
+}
+
+function balance(b: Booking) {
+  return b.total_amount === null ? 0 : Math.max(0, b.total_amount + b.tcs_amount - b.amount_paid);
 }
 
 const helpLine = `Questions? Reply to this email, call ${e(site.phone)} or <a href="${e(whatsappLink())}" style="color:#dc2025">message us on WhatsApp</a>.`;
@@ -106,13 +124,13 @@ export function paymentRequestEmail(b: Booking, c: Customer, dueNow: number) {
 }
 
 export function paymentReceivedEmail(b: Booking, c: Customer, amount: number) {
-  const balance = b.total_amount !== null ? Math.max(0, b.total_amount - b.amount_paid) : null;
+  const left = b.total_amount !== null ? balance(b) : null;
   return build({
     to: c.email!,
     subject: `Payment received – ${formatINR(amount)} for ${b.reference}`,
     heading: "Payment received, JazakAllah Khair",
     intro:
-      balance === 0
+      left === 0
         ? `We've received your payment of <strong>${e(formatINR(amount))}</strong>. Your booking is fully paid.`
         : `We've received your payment of <strong>${e(formatINR(amount))}</strong>.${b.status === "confirmed" ? " Your booking is confirmed." : ""}`,
     rows: bookingRows(b),
@@ -144,7 +162,107 @@ export function bookingStatusEmail(b: Booking, c: Customer, status: BookingStatu
   return build({ to: c.email!, ...c2, rows: bookingRows(b), button: { label: "View your booking", href: bookingLink(b) }, footer: helpLine });
 }
 
+export function quoteEmail(q: Quote, c: Customer) {
+  const total = quoteTotal({ items: q.items, discount: q.discount });
+  const rows: Rows = [
+    ["Quote", q.reference],
+    ["Package", q.title],
+    ["Travel", formatTravelMonth(q.travel_month)],
+    ["Travellers", `${q.adults} adult${q.adults === 1 ? "" : "s"}${q.children ? `, ${q.children} child${q.children === 1 ? "" : "ren"}` : ""}`],
+    ["Total", formatINR(total)],
+  ];
+  if (q.deposit) rows.push(["Deposit to confirm", formatINR(q.deposit)]);
+  if (q.valid_until) rows.push(["Valid until", formatDay(q.valid_until)]);
+  return build({
+    to: c.email!,
+    subject: `Your quote for ${q.title} – ${q.reference}`,
+    heading: `Assalamu Alaikum ${c.name.split(" ")[0]}, here is your quote`,
+    intro: "Thank you for your enquiry. Your personalised quote is below. Open it to see the full price breakdown and accept it in one click.",
+    rows,
+    button: { label: "View and accept your quote", href: quoteLink(q) },
+    footer: helpLine,
+  });
+}
+
+export function instalmentReminderEmail(b: Booking, c: Customer, i: { label: string; dueDate: string; outstanding: number; overdue: boolean }) {
+  return build({
+    to: c.email!,
+    subject: i.overdue ? `Payment overdue – ${i.label} for ${b.reference}` : `Payment due ${formatDay(i.dueDate)} – ${b.reference}`,
+    heading: i.overdue ? "A payment on your booking is overdue" : "Your next payment is coming up",
+    intro: i.overdue
+      ? `Your <strong>${e(i.label)}</strong> of <strong>${e(formatINR(i.outstanding))}</strong> was due on ${e(formatDay(i.dueDate))}. Please pay it soon so we can keep your seats and hotel rooms confirmed.`
+      : `A gentle reminder that your <strong>${e(i.label)}</strong> of <strong>${e(formatINR(i.outstanding))}</strong> is due on ${e(formatDay(i.dueDate))}.`,
+    rows: bookingRows(b),
+    button: { label: `Pay ${formatINR(i.outstanding)} securely`, href: bookingLink(b) },
+    footer: `Already paid by bank transfer or UPI? Please ignore this email, our team will update your booking. ${helpLine}`,
+  });
+}
+
+export function feedbackRequestEmail(b: Booking, c: Customer, opts: { referralCode: string; referralOffer: string }) {
+  const offer = opts.referralOffer ? ` ${e(opts.referralOffer)}` : "";
+  return build({
+    to: c.email!,
+    subject: `How was your trip? – ${b.package_title}`,
+    heading: `JazakAllah Khair for travelling with us, ${c.name.split(" ")[0]}`,
+    intro: "We hope your journey was blessed and comfortable. Could you spare one minute to tell us how it went? Your feedback helps us serve every traveller better.",
+    rows: [
+      ["Booking", b.reference],
+      ["Package", b.package_title],
+      ["Your referral code", opts.referralCode],
+    ],
+    button: { label: "Rate your trip", href: feedbackLink(b) },
+    footer: `Know someone planning Umrah, Hajj or a holiday? Share your link ${e(referralLink(opts.referralCode))} or your code <strong>${e(opts.referralCode)}</strong>.${offer} ${helpLine}`,
+  });
+}
+
 // ---------------- Owner alerts ----------------
+
+export function adminDigestEmail(d: {
+  followUps: { name: string; what: string; id: number }[];
+  instalments: { name: string; reference: string; label: string; dueDate: string; outstanding: number }[];
+  passports: { name: string; reference: string; problem: string }[];
+  departures: { title: string; startDate: string; booked: number; seats: number }[];
+}) {
+  const section = (title: string, lines: string[]) =>
+    lines.length ? `<p style="margin:18px 0 6px;font-weight:700">${e(title)}</p><ul style="margin:0;padding-left:18px">${lines.map((l) => `<li style="margin:4px 0">${l}</li>`).join("")}</ul>` : "";
+  const html = [
+    section("Follow-ups due", d.followUps.map((f) => `<a href="${e(adminLink(`/leads/${f.id}`))}" style="color:#dc2025">${e(f.name)}</a> · ${e(f.what)}`)),
+    section("Payments due this week or overdue", d.instalments.map((i) => `${e(i.name)} (${e(i.reference)}) · ${e(i.label)} ${e(formatINR(i.outstanding))} due ${e(formatDay(i.dueDate))}`)),
+    section("Passports to fix", d.passports.map((p) => `${e(p.name)} (${e(p.reference)}) · ${e(p.problem)}`)),
+    section("Departures in the next 30 days", d.departures.map((x) => `${e(x.title)} · ${e(formatDay(x.startDate))} · ${x.booked}/${x.seats} seats`)),
+  ].join("");
+  return build({
+    to: "",
+    subject: `Today at Dilruba: ${d.followUps.length} follow-ups, ${d.instalments.length} payments due`,
+    heading: "Your morning summary",
+    intro: html || "Nothing needs attention today.",
+    button: { label: "Open the CRM", href: adminLink("") },
+  });
+}
+
+export function adminFeedbackEmail(b: Booking, c: Customer, rating: number, comment: string | null) {
+  return build({
+    to: "",
+    subject: `${rating <= 3 ? "⚠ " : ""}Feedback ${rating}/5 from ${c.name} – ${b.reference}`,
+    heading: rating <= 3 ? "A customer wasn't fully happy" : "New feedback",
+    intro: `${e(c.name)} rated their trip <strong>${rating}/5</strong>.${rating <= 3 ? " Please call them to make it right." : ""}`,
+    rows: [["Customer", c.name], ["Phone", c.phone], ["Booking", b.reference], ["Package", b.package_title], ["Comment", comment ?? "—"]],
+    button: { label: "Open in admin", href: adminLink(`/bookings/${b.id}`) },
+  });
+}
+
+export function adminQuoteResponseEmail(q: Quote, c: Customer, accepted: boolean, bookingId: number | null) {
+  return build({
+    to: "",
+    subject: `Quote ${q.reference} ${accepted ? "accepted" : "declined"} by ${c.name}`,
+    heading: accepted ? "A quote was accepted" : "A quote was declined",
+    intro: accepted
+      ? `${e(c.name)} accepted your quote for ${e(q.title)}. A booking was created with the quoted price; send the payment link when you're ready.`
+      : `${e(c.name)} declined your quote for ${e(q.title)}. A quick call may still save it.`,
+    rows: [["Customer", c.name], ["Phone", c.phone], ["Total", formatINR(quoteTotal({ items: q.items, discount: q.discount }))]],
+    button: { label: "Open in admin", href: adminLink(bookingId ? `/bookings/${bookingId}` : q.lead_id ? `/leads/${q.lead_id}` : "/leads") },
+  });
+}
 
 export function adminNewBookingEmail(b: Booking, c: Customer) {
   return build({

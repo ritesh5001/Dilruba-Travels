@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { Phone } from "lucide-react";
+import { Gift, Phone } from "lucide-react";
 import { formatINR } from "@dilruba/shared/booking";
 import type { AdminCustomerDetail } from "@dilruba/shared/crm";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
@@ -43,7 +43,7 @@ export default function CustomerDetailPage() {
       />
       {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
 
-      <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
         <div className="space-y-6">
           <Card title="Bookings">
             {c.bookings.length === 0 ? (
@@ -86,6 +86,40 @@ export default function CustomerDetailPage() {
           <NotesPanel notes={c.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
         </div>
 
+        <div className="space-y-6">
+        <Card title="Referrals">
+          {c.referralCode ? (
+            <>
+              <p className="text-xs text-muted">Their code</p>
+              <p className="font-display text-2xl font-semibold tracking-wide">{c.referralCode}</p>
+              <a
+                href={customerWhatsapp(c.phone, `Assalamu Alaikum ${c.name.split(" ")[0]}, JazakAllah Khair for travelling with us! If friends or family are planning Umrah, Hajj or a holiday, share your link: ${window.location.origin}/?ref=${c.referralCode} (or your code ${c.referralCode}) and we'll look after them just like you.`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-whatsapp mt-3 w-full !py-2"
+              >
+                <WhatsAppIcon className="size-4" /> Send their referral link
+              </a>
+            </>
+          ) : (
+            <button type="button" disabled={action.busy} onClick={() => void mutate("/referral-code", "POST", undefined)} className="btn btn-outline w-full !py-2 disabled:opacity-50">
+              <Gift className="size-4" aria-hidden /> Create a referral code
+            </button>
+          )}
+          {c.referredBy && (
+            <p className="mt-4 text-sm">Referred by <Link href={`/admin/customers/${c.referredBy.id}`} className="font-medium hover:text-brand">{c.referredBy.name}</Link></p>
+          )}
+          {c.referrals.length > 0 && (
+            <div className="mt-4">
+              <p className="text-xs text-muted">Has referred {c.referrals.length}</p>
+              <ul className="mt-1 space-y-1 text-sm">
+                {c.referrals.map((r) => <li key={r.id}><Link href={`/admin/customers/${r.id}`} className="hover:text-brand">{r.name}</Link></li>)}
+              </ul>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-muted">Customers get their code automatically in the thank-you email after a trip.</p>
+        </Card>
+
         <Card title="Details" className="h-fit">
           <form
             key={`${c.name}-${c.email}`}
@@ -113,6 +147,7 @@ export default function CustomerDetailPage() {
             {saved && <p role="status" className="text-sm text-[#0f7a3a]">Saved.</p>}
           </form>
         </Card>
+        </div>
       </div>
     </>
   );
