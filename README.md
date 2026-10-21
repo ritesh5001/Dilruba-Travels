@@ -41,18 +41,43 @@ setup is needed.
 ## Admin panel (CRM)
 
 Open **`/admin`** (locally http://localhost:3000/admin) and log in with `ADMIN_EMAIL` and the password
-you hashed with `npm run admin:hash -w backend`. There is one owner login; change the password by
-generating a new hash.
+you hashed with `npm run admin:hash -w backend`. That owner login always works; change its password by
+generating a new hash. Add your team under **Staff**: each person gets their own login as Owner or Staff,
+and every note and change records who made it. Staff can't see Reports, Campaigns, supplier costs,
+Staff or Settings.
 
-- **Dashboard:** new leads, bookings to action, confirmed trips, money received this month and still to collect, latest activity.
-- **Leads:** every website enquiry (home, contact, package and CTA forms). Filter by status
-  (New → Contacted → Quoted → Converted / Lost), search, WhatsApp or call the customer, add notes, and
-  convert a lead into a booking.
-- **Bookings:** set the total price and deposit, email the price and payment link, record payments taken
-  offline (UPI, bank transfer, cash, cheque), change status (customer is emailed on confirm, cancel,
-  complete), copy the customer's booking link for WhatsApp, and keep notes. Every change is logged.
+- **Dashboard:** new leads, bookings to action, money received and still to collect, plus what needs
+  doing today: follow-ups due, instalments due this week, passports to fix, upcoming departures with
+  seats filled, and travellers' birthdays (one-tap WhatsApp greeting).
+- **Leads:** every website enquiry, plus leads added by hand (phone, WhatsApp, walk-in). Set a
+  follow-up date, assign to a team member, record why a lead was lost, send ready-made WhatsApp
+  messages, write a quote, or convert it into a booking.
+- **Quotes:** itemised price (per-person lines, discount, deposit, valid-until date). Email it or share
+  the link on WhatsApp; the customer opens `/quote`, accepts it in one click, and lands on their
+  booking page to pay. Accepting by phone? Record it and the booking is created at the quoted price.
+- **Bookings:** price, deposit and TCS (overseas packages; the rate is in Settings), group date,
+  an instalment plan with automatic email reminders, each traveller's passport, visa, mahram and room
+  details with document uploads (passport scans and photos, staff-only), supplier costs and profit
+  (owner only), a printable GST invoice with a running number per financial year, and post-trip
+  feedback.
+- **Departures:** fixed group dates with a seat limit. Open ones show on the package page with seats
+  left, and customers can pick one when booking. Each has a passenger list, rooming list (grouped by
+  the room name set on each traveller), print view and an Excel/CSV manifest.
 - **Customers:** everyone who enquired or booked, matched by phone number, with their enquiries,
-  bookings, total paid and notes.
+  bookings, total paid, notes and referral code. Links like `/?ref=CODE` credit the referrer on the
+  new customer's enquiry or booking.
+- **Reports** (owner): leads by status and source, conversion by team member, lost reasons, money
+  received per month, sales and profit by category, quotes won, average rating. CSV exports.
+- **Campaigns** (owner): past travellers (by category, or last trip before a date) or people who
+  enquired and never booked, with a personalised WhatsApp message for each, or download the list.
+- **Settings** (owner): invoice details (legal name, GSTIN, bank details), GST and TCS rates, the
+  Google review link, a referral offer, and on/off switches for the automatic emails.
+
+Automatic emails run in the backend every 30 minutes while it's awake: a reminder to the customer
+3 days before each instalment and once if it's overdue, and an 8am summary to `ADMIN_NOTIFY_EMAIL`.
+When a booking is marked completed, the customer gets a feedback link; 4–5 star ratings are asked
+for a Google review, lower ratings email the owner.
+
 - **Packages:** add, edit, hide or delete the packages listed on the website: title, category,
   price, days, places, highlights, hotels, day-by-day itinerary, inclusions, documents and FAQs.
   Pick the cover and gallery photos from the site's own photos or upload new ones (they're resized
