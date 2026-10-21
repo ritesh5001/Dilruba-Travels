@@ -6,7 +6,8 @@ import { PackageCard } from "@/components/package-card";
 import { SectionHeading } from "@/components/section-heading";
 import { CtaBand } from "@/components/cta-band";
 import { photo } from "@/lib/images";
-import { categories, getPackagesByCategory } from "@/lib/packages";
+import { getPackages } from "@/lib/catalog";
+import { categories } from "@/lib/packages";
 
 export const metadata: Metadata = {
   title: "All Packages – Umrah, Hajj, Ziyarat & Holidays",
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/packages" },
 };
 
-export default function PackagesPage() {
+export default async function PackagesPage() {
+  const packages = await getPackages();
   return (
     <>
       <PageHero
@@ -40,7 +42,7 @@ export default function PackagesPage() {
 
       <div className="container-x space-y-20 py-14 sm:py-20">
         {categories.map((c) => {
-          const items = getPackagesByCategory(c.slug);
+          const items = packages.filter((p) => p.category === c.slug);
           return (
             <section key={c.slug} id={c.slug} className="scroll-mt-24">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">

@@ -78,13 +78,62 @@ export interface NoteTable {
   created_at: CreatedAt;
 }
 
+type Json<T> = ColumnType<T, string, string>;
+
+export interface PackageTable {
+  id: Generated<number>;
+  category: string;
+  slug: string;
+  title: string;
+  summary: string;
+  days: number;
+  nights: number;
+  tier: string | null;
+  /** Rupees per person; null shows "Best price on request". */
+  starting_price: number | null;
+  sharing: string | null;
+  route_from: string;
+  route_to: string;
+  /** Image URL: /images/<name>.webp (built in) or /api/media/<id>.webp (uploaded). */
+  image: string;
+  featured: boolean;
+  published: boolean;
+  sort_order: number;
+  // Lists are stored as JSON (written with JSON.stringify).
+  places: Json<string[]>;
+  gallery: Json<string[]>;
+  highlights: Json<string[]>;
+  hotels: Json<{ city: string; detail: string }[]>;
+  itinerary: Json<{ day: string; title: string; description: string }[]>;
+  inclusions: Json<string[]>;
+  exclusions: Json<string[]>;
+  documents: Json<string[]>;
+  faqs: Json<{ q: string; a: string }[]>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface MediaTable {
+  id: Generated<number>;
+  content_type: string;
+  width: number;
+  height: number;
+  size: number;
+  data: Buffer;
+  created_at: CreatedAt;
+}
+
 export interface Database {
   customers: CustomerTable;
   leads: LeadTable;
   bookings: BookingTable;
   payments: PaymentTable;
   notes: NoteTable;
+  packages: PackageTable;
+  media: MediaTable;
 }
+
+export type PackageRow = Selectable<PackageTable>;
 
 export type Customer = Selectable<CustomerTable>;
 export type Lead = Selectable<LeadTable>;

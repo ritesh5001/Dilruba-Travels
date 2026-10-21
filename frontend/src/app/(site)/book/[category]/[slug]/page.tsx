@@ -5,24 +5,24 @@ import { CalendarDays, MapPin, Phone } from "lucide-react";
 import { PageHero } from "@/components/page-hero";
 import { BookingForm } from "@/components/booking-form";
 import { WhatsAppIcon } from "@/components/icons";
-import { photo } from "@/lib/images";
-import { formatPrice, getCategory, getPackage, packageHref, packageWhatsappMessage, packages } from "@/lib/packages";
+import { getPackage, packageParams } from "@/lib/catalog";
+import { formatPrice, getCategory, packageHref, packageWhatsappMessage } from "@/lib/packages";
 import { site, whatsappLink } from "@/lib/site";
 
-export function generateStaticParams() {
-  return packages.map((p) => ({ category: p.category, slug: p.slug }));
+export async function generateStaticParams() {
+  return packageParams();
 }
 
 export async function generateMetadata(props: PageProps<"/book/[category]/[slug]">): Promise<Metadata> {
   const { category, slug } = await props.params;
-  const p = getPackage(category, slug);
+  const p = await getPackage(category, slug);
   if (!p) return {};
   return { title: `Book ${p.title}`, robots: { index: false } };
 }
 
 export default async function BookPackagePage(props: PageProps<"/book/[category]/[slug]">) {
   const { category, slug } = await props.params;
-  const p = getPackage(category, slug);
+  const p = await getPackage(category, slug);
   const c = getCategory(category);
   if (!p || !c) notFound();
   const price = formatPrice(p.startingPrice);
@@ -30,7 +30,7 @@ export default async function BookPackagePage(props: PageProps<"/book/[category]
   return (
     <>
       <PageHero
-        image={photo(p.image, 2400)}
+        image={p.image}
         eyebrow="Book your journey"
         title={p.title}
         subtitle="Tell us who's travelling and when. We'll confirm availability and email your final price."

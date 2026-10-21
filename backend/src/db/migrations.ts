@@ -1,5 +1,6 @@
 import { type Kysely, sql } from "kysely";
 import { type Migration, type MigrationProvider, Migrator } from "kysely/migration";
+import { seedPackages } from "./seed-packages.ts";
 
 // Migrations run in key order. Never edit one that has shipped; add a new one instead.
 const migrations: Record<string, Migration> = {
@@ -98,6 +99,84 @@ migrations["0002_list_sort_indexes"] = {
     await db.schema.createIndex("bookings_created_idx").on("bookings").column("created_at").execute();
     await db.schema.createIndex("customers_updated_idx").on("customers").column("updated_at").execute();
     await db.schema.createIndex("payments_paid_idx").on("payments").columns(["status", "paid_at"]).execute();
+  },
+};
+
+migrations["0003_packages_and_media"] = {
+  async up(db: Kysely<any>) {
+    await db.schema
+      .createTable("packages")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("category", "text", (c) => c.notNull())
+      .addColumn("slug", "text", (c) => c.notNull())
+      .addColumn("title", "text", (c) => c.notNull())
+      .addColumn("summary", "text", (c) => c.notNull())
+      .addColumn("days", "integer", (c) => c.notNull())
+      .addColumn("nights", "integer", (c) => c.notNull())
+      .addColumn("tier", "text")
+      .addColumn("starting_price", "integer")
+      .addColumn("sharing", "text")
+      .addColumn("route_from", "text", (c) => c.notNull())
+      .addColumn("route_to", "text", (c) => c.notNull())
+      .addColumn("image", "text", (c) => c.notNull())
+      .addColumn("featured", "boolean", (c) => c.notNull().defaultTo(false))
+      .addColumn("published", "boolean", (c) => c.notNull().defaultTo(true))
+      .addColumn("sort_order", "integer", (c) => c.notNull().defaultTo(0))
+      .addColumn("places", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("gallery", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("highlights", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("hotels", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("itinerary", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("inclusions", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("exclusions", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("documents", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("faqs", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .addUniqueConstraint("packages_category_slug_key", ["category", "slug"])
+      .execute();
+    await db.schema.createIndex("packages_listing_idx").on("packages").columns(["published", "category", "sort_order"]).execute();
+
+    await db.schema
+      .createTable("media")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("content_type", "text", (c) => c.notNull())
+      .addColumn("width", "integer", (c) => c.notNull())
+      .addColumn("height", "integer", (c) => c.notNull())
+      .addColumn("size", "integer", (c) => c.notNull())
+      .addColumn("data", "bytea", (c) => c.notNull())
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .execute();
+
+    // Copy the catalogue that used to be hard-coded in the website, in its original order.
+    const toUrl = (name: string) => `/images/${name}.webp`;
+    const rows = seedPackages.map((p, i) => ({
+      category: p.category,
+      slug: p.slug,
+      title: p.title,
+      summary: p.summary,
+      days: p.days,
+      nights: p.nights,
+      tier: p.tier ?? null,
+      starting_price: p.startingPrice,
+      sharing: p.sharing ?? null,
+      route_from: p.route[0],
+      route_to: p.route[1],
+      image: toUrl(p.image),
+      featured: p.featured ?? false,
+      published: true,
+      sort_order: (i + 1) * 10,
+      places: JSON.stringify(p.places),
+      gallery: JSON.stringify((p.gallery ?? []).map(toUrl)),
+      highlights: JSON.stringify(p.highlights),
+      hotels: JSON.stringify(p.hotels ?? []),
+      itinerary: JSON.stringify(p.itinerary),
+      inclusions: JSON.stringify(p.inclusions),
+      exclusions: JSON.stringify(p.exclusions),
+      documents: JSON.stringify(p.documents),
+      faqs: JSON.stringify(p.faqs ?? []),
+    }));
+    if (rows.length) await db.insertInto("packages").values(rows).execute();
   },
 };
 

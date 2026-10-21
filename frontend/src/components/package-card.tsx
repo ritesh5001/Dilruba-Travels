@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowLeftRight, CalendarDays } from "lucide-react";
-import { photo } from "@/lib/images";
 import { formatPrice, packageHref, type TravelPackage } from "@/lib/packages";
 import { SmartImage } from "./smart-image";
 
@@ -12,7 +11,7 @@ export function PackageCard({ pkg, className = "" }: { pkg: TravelPackage; class
     <Link href={packageHref(pkg)} className={`group block ${className}`}>
       <div className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem] bg-ink">
         <SmartImage
-          src={photo(pkg.image, 900)}
+          src={pkg.image}
           alt={pkg.title}
           fill
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 45vw, 80vw"

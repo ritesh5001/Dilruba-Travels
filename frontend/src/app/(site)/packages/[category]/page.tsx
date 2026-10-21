@@ -5,7 +5,8 @@ import { PageHero } from "@/components/page-hero";
 import { PackageCard } from "@/components/package-card";
 import { CtaBand } from "@/components/cta-band";
 import { photo } from "@/lib/images";
-import { categories, getCategory, getPackagesByCategory } from "@/lib/packages";
+import { getPackagesByCategory } from "@/lib/catalog";
+import { categories, getCategory } from "@/lib/packages";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "@/components/icons";
 
@@ -30,7 +31,7 @@ export default async function CategoryPage(props: PageProps<"/packages/[category
   const c = getCategory(category);
   if (!c) notFound();
 
-  const items = getPackagesByCategory(c.slug);
+  const items = await getPackagesByCategory(c.slug);
   const others = categories.filter((o) => o.slug !== c.slug);
 
   return (

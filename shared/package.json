@@ -7,7 +7,8 @@
     "./enquiry": "./src/enquiry.ts",
     "./booking": "./src/booking.ts",
     "./site": "./src/site.ts",
-    "./crm": "./src/crm.ts"
+    "./crm": "./src/crm.ts",
+    "./catalog": "./src/catalog.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -22,7 +22,8 @@ import { FaqList } from "@/components/faq-list";
 import { CtaBand } from "@/components/cta-band";
 import { JsonLd } from "@/components/json-ld";
 import { photo } from "@/lib/images";
-import { generalCategories, getPackagesByCategory, mainCategories, packages } from "@/lib/packages";
+import { getPackages } from "@/lib/catalog";
+import { generalCategories, mainCategories } from "@/lib/packages";
 import { faqJsonLd, generalFaqs } from "@/lib/faqs";
 import { whatsappLink } from "@/lib/site";
 
@@ -73,8 +74,10 @@ const bentoSpans = [
   "sm:col-span-2",
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const packages = await getPackages();
   const featured = packages.filter((p) => p.featured);
+  const inCategory = (slug: string) => packages.filter((p) => p.category === slug);
 
   return (
     <>
@@ -168,7 +171,7 @@ export default function HomePage() {
 
         <div className="mt-10 grid auto-rows-[220px] gap-4 sm:auto-rows-[260px] sm:grid-cols-2 lg:grid-cols-4">
           {mainCategories.map((c, i) => {
-            const count = getPackagesByCategory(c.slug).length;
+            const count = inCategory(c.slug).length;
             const big = i === 0;
             return (
               <Link
@@ -276,7 +279,7 @@ export default function HomePage() {
         />
         <div className="mt-10 grid gap-5 lg:grid-cols-2">
           {generalCategories.map((c) => {
-            const items = getPackagesByCategory(c.slug);
+            const items = inCategory(c.slug);
             return (
               <Link
                 key={c.slug}

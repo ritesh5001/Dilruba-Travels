@@ -19,33 +19,30 @@ import { FaqList } from "@/components/faq-list";
 import { EnquiryForm } from "@/components/enquiry-form";
 import { JsonLd } from "@/components/json-ld";
 import { WhatsAppIcon } from "@/components/icons";
-import { photo } from "@/lib/images";
+import { getPackage, getPackagesByCategory, packageParams } from "@/lib/catalog";
 import { faqJsonLd } from "@/lib/faqs";
 import {
   formatPrice,
   getCategory,
-  getPackage,
-  getPackagesByCategory,
   packageHref,
   packageWhatsappMessage,
-  packages,
   serviceFor,
 } from "@/lib/packages";
 import { site, whatsappLink } from "@/lib/site";
 
-export function generateStaticParams() {
-  return packages.map((p) => ({ category: p.category, slug: p.slug }));
+export async function generateStaticParams() {
+  return packageParams();
 }
 
 export async function generateMetadata(props: PageProps<"/packages/[category]/[slug]">): Promise<Metadata> {
   const { category, slug } = await props.params;
-  const p = getPackage(category, slug);
+  const p = await getPackage(category, slug);
   if (!p) return {};
   return {
     title: `${p.title} from Mumbai`,
     description: `${p.summary} ${p.days} days covering ${p.places.join(", ")}. Get today's best price on WhatsApp.`,
     alternates: { canonical: packageHref(p) },
-    openGraph: { images: [photo(p.image, 1200)] },
+    openGraph: { images: [p.image] },
   };
 }
 
@@ -60,13 +57,13 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 
 export default async function PackagePage(props: PageProps<"/packages/[category]/[slug]">) {
   const { category, slug } = await props.params;
-  const p = getPackage(category, slug);
+  const p = await getPackage(category, slug);
   const c = getCategory(category);
   if (!p || !c) notFound();
 
   const price = formatPrice(p.startingPrice);
   const waLink = whatsappLink(packageWhatsappMessage(p));
-  const related = getPackagesByCategory(p.category).filter((r) => r.slug !== p.slug).slice(0, 4);
+  const related = (await getPackagesByCategory(p.category)).filter((r) => r.slug !== p.slug).slice(0, 4);
 
   const facts = [
     { icon: CalendarDays, label: "Duration", value: `${p.days} Days / ${p.nights} Nights` },
@@ -97,7 +94,7 @@ export default async function PackagePage(props: PageProps<"/packages/[category]
       {p.faqs && <JsonLd data={faqJsonLd(p.faqs)} />}
 
       <PageHero
-        image={photo(p.image, 2400)}
+        image={p.image}
         eyebrow={p.tier ? `${p.tier} · ${c.shortName}` : c.shortName}
         title={p.title}
         subtitle={p.summary}
@@ -249,7 +246,7 @@ export default async function PackagePage(props: PageProps<"/packages/[category]
                     className={`relative aspect-square overflow-hidden rounded-3xl ${i === 0 ? "col-span-2 aspect-[2/1] sm:col-span-1 sm:aspect-square" : ""}`}
                   >
                     <SmartImage
-                      src={photo(g, 800)}
+                      src={g}
                       alt={`${p.title} – photo ${i + 1}`}
                       fill
                       sizes="(min-width: 640px) 25vw, 50vw"

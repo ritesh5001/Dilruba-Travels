@@ -28,6 +28,9 @@ const schema = z.object({
   // Where new-lead, new-booking and payment alerts go. Defaults to ADMIN_EMAIL.
   ADMIN_NOTIFY_EMAIL: optional,
 
+  // Shared with the website (frontend REVALIDATE_SECRET) so package edits show immediately.
+  REVALIDATE_SECRET: optional,
+
   PAYMENT_PROVIDER: z.enum(["razorpay"]).default("razorpay"),
   RAZORPAY_KEY_ID: optional,
   RAZORPAY_KEY_SECRET: optional,

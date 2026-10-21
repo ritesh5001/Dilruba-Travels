@@ -6,6 +6,7 @@ import { db } from "./db/index.ts";
 import { migrateToLatest } from "./db/migrations.ts";
 import { adminRouter } from "./routes/admin/index.ts";
 import { bookingsRouter } from "./routes/bookings.ts";
+import { catalogRouter } from "./routes/catalog.ts";
 import { enquiryRouter } from "./routes/enquiry.ts";
 import { paymentsRouter } from "./routes/payments.ts";
 
@@ -45,10 +46,12 @@ app.get("/api/health", async (req, res) => {
 // Mounted before express.json(): the webhook needs the raw body to check its signature.
 app.use("/api/payments", paymentsRouter);
 
-app.use(express.json({ limit: "32kb" }));
+// Large enough for a package with a long itinerary (admin form).
+app.use(express.json({ limit: "256kb" }));
 
 app.use("/api/enquiry", enquiryRouter);
 app.use("/api/bookings", bookingsRouter);
+app.use("/api", catalogRouter);
 app.use("/api/admin", adminRouter);
 
 app.use((_req, res) => {
@@ -59,7 +62,8 @@ app.use((_req, res) => {
 app.use((err: { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const status = err.status && err.status < 500 ? err.status : 500;
   if (status === 500) console.error(err);
-  res.status(status).json({ ok: false, error: status === 500 ? "Something went wrong. Please try again." : "Invalid request" });
+  const message = status === 500 ? "Something went wrong. Please try again." : status === 413 ? "That file or request is too large." : "Invalid request";
+  res.status(status).json({ ok: false, error: message });
 });
 
 // The database may still be starting (local dev, or a container restart): retry for ~30s.

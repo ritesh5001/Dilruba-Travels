@@ -9,6 +9,7 @@ import { parseBody } from "../../lib/util.ts";
 import { bookingsAdminRouter } from "./bookings.ts";
 import { customersRouter } from "./customers.ts";
 import { leadsRouter } from "./leads.ts";
+import { mediaRouter, packagesRouter } from "./packages.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminPayment } from "./mappers.ts";
 
 export const adminRouter = Router();
@@ -111,3 +112,5 @@ adminRouter.get("/dashboard", async (_req, res) => {
 adminRouter.use("/leads", leadsRouter);
 adminRouter.use("/bookings", bookingsAdminRouter);
 adminRouter.use("/customers", customersRouter);
+adminRouter.use("/packages", packagesRouter);
+adminRouter.use("/media", mediaRouter);
