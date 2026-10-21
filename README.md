@@ -131,7 +131,7 @@ The site's own port is set in the shell (`PORT=3000 npm start -w frontend`), not
   backend is down or older. If both deploy at once, redeploy the site once the backend is up.
 - After an admin edit the backend calls `PUBLIC_SITE_URL/revalidate`, so `PUBLIC_SITE_URL` must be
   the site's real address and both sides need the same `REVALIDATE_SECRET`. Without it, edits
-  still appear within an hour.
+  still appear within a few minutes.
 - Serve the site behind a reverse proxy or host that sets `X-Forwarded-For` (nginx, Cloudflare, Vercel,
   Render all do). Rate limits on the booking, enquiry and login forms use it to tell visitors apart.
 - Use HTTPS in production: the admin cookie is marked `Secure` when `NODE_ENV=production`.

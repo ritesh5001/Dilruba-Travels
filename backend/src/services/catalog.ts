@@ -72,7 +72,7 @@ export const mediaUrl = (id: number) => `/api/media/${id}.webp`;
 
 /**
  * Tells the website its cached package pages are out of date, so an admin change shows on the
- * next page load. Without REVALIDATE_SECRET the site still picks changes up within an hour.
+ * next page load. Without REVALIDATE_SECRET the site still picks changes up within a few minutes.
  */
 export async function refreshWebsite() {
   if (!config.REVALIDATE_SECRET) return;

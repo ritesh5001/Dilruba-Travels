@@ -5,7 +5,7 @@ import type { CategorySlug } from "./packages";
 // Packages are managed in the admin panel and stored by the backend. Server components load
 // them through here: one cached copy of the published catalogue, shared by every page.
 // The backend calls /revalidate after each admin change, which expires the "catalog" tag;
-// otherwise the copy refreshes hourly.
+// otherwise the copy refreshes every few minutes, so changes still show if that call fails.
 
 export const CATALOG_TAG = "catalog";
 
@@ -28,7 +28,7 @@ async function fetchCatalog(): Promise<TravelPackage[]> {
 export async function getPackages(): Promise<TravelPackage[]> {
   "use cache";
   cacheTag(CATALOG_TAG);
-  cacheLife("hours");
+  cacheLife("minutes");
   return fetchCatalog();
 }
 

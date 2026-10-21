@@ -58,6 +58,12 @@ if (!env.ADMIN_EMAIL || !env.ADMIN_PASSWORD_HASH) {
 if (!env.RESEND_API_KEY) {
   console.warn("RESEND_API_KEY is not set: emails are printed to the console instead of being sent.");
 }
+if (!env.REVALIDATE_SECRET) {
+  console.warn("REVALIDATE_SECRET is not set: package edits in the admin panel take a few minutes to show on the website.");
+}
+if (env.PUBLIC_SITE_URL.includes(",")) {
+  console.warn("PUBLIC_SITE_URL must be one address (the website), not a list: email links and website refreshes will fail. Put extra origins in CORS_ORIGIN.");
+}
 
 export const config = {
   ...env,
