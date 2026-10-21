@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { CATALOG_TAG } from "@/lib/catalog";
 
 // Called by the backend after a package is added, changed or removed in the admin panel,
@@ -19,5 +19,9 @@ export async function POST(request: Request) {
   }
   // expire: 0 → the next visitor gets fresh data rather than the stale copy.
   revalidateTag(CATALOG_TAG, { expire: 0 });
+  // Also drop the cached package pages themselves. Without this, a package that was hidden or
+  // deleted kept serving its last cached page instead of "not found".
+  revalidatePath("/packages/[category]/[slug]", "page");
+  revalidatePath("/book/[category]/[slug]", "page");
   return Response.json({ ok: true });
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarCheck, ExternalLink, Inbox, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { CalendarCheck, ExternalLink, Inbox, LayoutDashboard, LogOut, Package, Users } from "lucide-react";
 import { ApiError, adminFetch, clearAdminCache } from "@/lib/admin-api";
 
 const nav = [
@@ -11,6 +11,7 @@ const nav = [
   { href: "/admin/leads", label: "Leads", icon: Inbox },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck },
   { href: "/admin/customers", label: "Customers", icon: Users },
+  { href: "/admin/packages", label: "Packages", icon: Package },
 ] as const;
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

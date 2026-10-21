@@ -68,6 +68,9 @@ const localPhotos: Partial<Record<PhotoKey, string>> = {
   aqsa: "aqsa.webp",
 };
 
+/** The site's own photos, offered in the admin image picker alongside uploads. */
+export const builtInPhotos = Object.entries(localPhotos).map(([key, file]) => ({ key, url: `/images/${file}` }));
+
 export function photo(key: PhotoKey, width = 1600) {
   const local = localPhotos[key];
   // next/image resizes local files itself, so the requested width only matters for Unsplash.

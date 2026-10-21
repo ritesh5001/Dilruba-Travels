@@ -53,6 +53,10 @@ generating a new hash.
   complete), copy the customer's booking link for WhatsApp, and keep notes. Every change is logged.
 - **Customers:** everyone who enquired or booked, matched by phone number, with their enquiries,
   bookings, total paid and notes.
+- **Packages:** add, edit, hide or delete the packages listed on the website: title, category,
+  price, days, places, highlights, hotels, day-by-day itinerary, inclusions, documents and FAQs.
+  Pick the cover and gallery photos from the site's own photos or upload new ones (they're resized
+  and stored in the database). Star a package to feature it on the home page; the eye icon hides it.
 
 ## Booking flow
 
@@ -109,6 +113,7 @@ All variables, with comments, are in the example files:
 | backend | `SESSION_SECRET` | Signs admin cookies; 32+ random characters, required in production |
 | backend | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`, `ADMIN_NOTIFY_EMAIL` | Email |
 | backend | `PAYMENT_PROVIDER`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Online payments |
+| both | `REVALIDATE_SECRET` | Same value on both: lets package edits show on the site immediately |
 | backend | `PORT`, `CORS_ORIGIN`, `DATABASE_POOL_MAX` | Server |
 
 ```bash
@@ -121,6 +126,12 @@ The site's own port is set in the shell (`PORT=3000 npm start -w frontend`), not
 ### Deployment notes
 
 - The backend creates and updates its database tables itself on start (`backend/src/db/migrations.ts`).
+- **Deploy the backend before the site.** The site builds its package pages from the backend's
+  `/api/catalog/packages`, so a site build fails (and the previous version stays live) if the
+  backend is down or older. If both deploy at once, redeploy the site once the backend is up.
+- After an admin edit the backend calls `PUBLIC_SITE_URL/revalidate`, so `PUBLIC_SITE_URL` must be
+  the site's real address and both sides need the same `REVALIDATE_SECRET`. Without it, edits
+  still appear within an hour.
 - Serve the site behind a reverse proxy or host that sets `X-Forwarded-For` (nginx, Cloudflare, Vercel,
   Render all do). Rate limits on the booking, enquiry and login forms use it to tell visitors apart.
 - Use HTTPS in production: the admin cookie is marked `Secure` when `NODE_ENV=production`.
@@ -130,7 +141,9 @@ The site's own port is set in the shell (`PORT=3000 npm start -w frontend`), not
 | What | File |
 | --- | --- |
 | Phone, WhatsApp, email, address | `shared/src/site.ts` |
-| Package categories and packages | `frontend/src/lib/packages.ts` |
+| Packages | Admin panel → Packages (stored in the database; first copied from `backend/src/db/seed-packages.ts`) |
+| Package categories | `frontend/src/lib/packages.ts` |
+| How the site loads packages | `frontend/src/lib/catalog.ts` |
 | Photos | `frontend/src/lib/images.ts`, `frontend/public/images/` |
 | Homepage FAQs | `frontend/src/lib/faqs.ts` |
 | Enquiry and booking validation, statuses | `shared/src/enquiry.ts`, `shared/src/booking.ts` |
@@ -170,8 +183,8 @@ payment-request and manual payments).
 
 ## Before launch
 
-- Confirm package prices, durations, hotels and inclusions in `frontend/src/lib/packages.ts`
-  (`startingPrice: null` shows "Best price on request").
+- Confirm package prices, durations, hotels and inclusions in Admin → Packages
+  (an empty starting price shows "Best price on request").
 - Replace stock photos with real group and office photos where possible.
 - Review the draft Terms and Privacy Policy, and add payment, cancellation and refund terms
   (Razorpay requires these pages for live mode).
