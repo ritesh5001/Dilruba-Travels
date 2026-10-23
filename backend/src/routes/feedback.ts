@@ -46,12 +46,12 @@ feedbackRouter.post(
     if (!b) return void res.status(404).json({ ok: false, error: "Trip not found" });
     const saved = await db
       .insertInto("feedback")
-      .values({ booking_id: b.id, rating: data.rating, comment: data.comment })
+      .values({ booking_id: b.id, rating: data.rating, comment: data.comment, can_publish: data.canPublish })
       .onConflict((oc) => oc.column("booking_id").doNothing())
       .returning("id")
       .executeTakeFirst();
     if (!saved) return void res.status(409).json({ ok: false, error: "You've already shared feedback for this trip. JazakAllah Khair!" });
-    await addEvent(db, { booking_id: b.id, customer_id: b.customer_id, body: `Customer rated the trip ${data.rating}/5${data.comment ? `: "${data.comment}"` : "."}` });
+    await addEvent(db, { booking_id: b.id, customer_id: b.customer_id, body: `Customer rated the trip ${data.rating}/5${data.comment ? `: "${data.comment}"` : "."}${data.comment && data.canPublish ? " They agreed it can be shown on the website." : ""}` });
     const c = await db.selectFrom("customers").selectAll().where("id", "=", b.customer_id).executeTakeFirstOrThrow();
     void notifyAdmin(adminFeedbackEmail(b, c, data.rating, data.comment));
     const settings = await getSettings();

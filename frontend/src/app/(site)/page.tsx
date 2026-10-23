@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  ArrowUpRight,
   BadgeCheck,
   FileCheck2,
   Headset,
@@ -12,20 +11,18 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { HeroEnquiryCard } from "@/components/enquiry-form";
+import { HeroBooking, type BookablePackage } from "@/components/hero-booking";
 import { Partners } from "@/components/partners";
+import { Reviews } from "@/components/reviews";
 import { SmartImage } from "@/components/smart-image";
-import { Carousel } from "@/components/carousel";
-import { PackageCard } from "@/components/package-card";
 import { SectionHeading } from "@/components/section-heading";
 import { FaqList } from "@/components/faq-list";
 import { CtaBand } from "@/components/cta-band";
 import { JsonLd } from "@/components/json-ld";
 import { photo } from "@/lib/images";
 import { getPackages } from "@/lib/catalog";
-import { generalCategories, mainCategories } from "@/lib/packages";
 import { faqJsonLd, generalFaqs } from "@/lib/faqs";
-import { whatsappLink } from "@/lib/site";
+import { site, whatsappLink } from "@/lib/site";
 
 const trustPoints = [
   { icon: FileCheck2, title: "Visa handled for you", text: "Documents checked and filed by our team" },
@@ -58,26 +55,17 @@ const whyUs = [
 ];
 
 const steps = [
-  { title: "Enquire", text: "Fill the short form or message us on WhatsApp." },
-  { title: "Get your quote", text: "Receive a personalised quote with hotels, dates and price." },
-  { title: "Confirm", text: "Pick your package and pay a small advance privately." },
+  { title: "Pick a date", text: "Choose a package and one of our open group dates above, or ask for a custom package." },
+  { title: "Get your price", text: "We confirm your seats and email the final price with hotels and inclusions." },
+  { title: "Pay the deposit", text: "Pay a deposit online or by bank transfer to confirm. The balance before travel." },
   { title: "Travel", text: "We handle visa, tickets and hotels. You focus on your journey." },
 ];
 
-// Tiles for the six main categories: fills 2 columns on tablets and 4 on desktop with no gaps.
-const bentoSpans = [
-  "sm:col-span-2 sm:row-span-2",
-  "",
-  "",
-  "lg:col-span-2",
-  "lg:col-span-2",
-  "sm:col-span-2",
-];
-
 export default async function HomePage() {
-  const packages = await getPackages();
-  const featured = packages.filter((p) => p.featured);
-  const inCategory = (slug: string) => packages.filter((p) => p.category === slug);
+  // Packages aren't listed on the home page; the booking card only offers those with open dates.
+  const bookable: BookablePackage[] = (await getPackages())
+    .filter((p) => p.departures?.length)
+    .map((p) => ({ category: p.category, slug: p.slug, title: p.title, departures: p.departures! }));
 
   return (
     <>
@@ -114,7 +102,7 @@ export default async function HomePage() {
             </div>
 
             <div className="mt-12 w-full max-w-5xl text-left sm:mt-16">
-              <HeroEnquiryCard />
+              <HeroBooking packages={bookable} />
             </div>
           </div>
         </div>
@@ -137,69 +125,35 @@ export default async function HomePage() {
         </ul>
       </section>
 
-      {/* 3. Popular packages */}
-      <section className="container-x py-10 sm:py-14">
-        <Carousel
-          heading={
-            <SectionHeading
-              strong="Popular"
-              soft="packages"
-              intro="Hand-picked journeys our travellers love. Tap any package for hotels, itinerary and inclusions."
-            />
-          }
-        >
-          {featured.map((p) => (
-            <PackageCard key={p.slug} pkg={p} className="w-[78%] shrink-0 snap-start sm:w-[45%] lg:w-[calc(25%-15px)]" />
-          ))}
-        </Carousel>
-      </section>
-
-      {/* 4. Main packages */}
-      <section className="container-x py-10 sm:py-14">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <SectionHeading
-            strong="Sacred"
-            soft="journeys"
-            intro="Our main packages: from Umrah and Hajj to ziyarat in Iraq, Jordan, Palestine and Turkey."
-          />
-          <Link href="/packages" className="btn btn-outline shrink-0 self-start sm:self-auto">
-            View all packages <ArrowRight className="size-4" aria-hidden />
-          </Link>
+      {/* About us */}
+      <section className="container-x grid gap-12 py-10 sm:py-14 lg:grid-cols-2 lg:items-center">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="relative aspect-[3/4] overflow-hidden rounded-[1.75rem]">
+            <SmartImage src={photo("kaaba", 900)} alt="The Kaaba in Makkah" fill sizes="(min-width: 1024px) 25vw, 50vw" className="object-cover" />
+          </div>
+          <div className="relative mt-10 aspect-[3/4] overflow-hidden rounded-[1.75rem]">
+            <SmartImage src={photo("najaf", 900)} alt="The shrine of Imam Ali in Najaf" fill sizes="(min-width: 1024px) 25vw, 50vw" className="object-cover" />
+          </div>
         </div>
-
-        <div className="mt-10 grid auto-rows-[220px] gap-4 sm:auto-rows-[260px] sm:grid-cols-2 lg:grid-cols-4">
-          {mainCategories.map((c, i) => {
-            const count = inCategory(c.slug).length;
-            const big = i === 0;
-            return (
-              <Link
-                key={c.slug}
-                href={`/packages/${c.slug}`}
-                className={`group relative isolate overflow-hidden rounded-[1.75rem] bg-ink ${bentoSpans[i] ?? ""}`}
-              >
-                <SmartImage
-                  src={photo(c.image, big ? 1600 : 900)}
-                  alt={c.name}
-                  fill
-                  sizes={big ? "(min-width: 640px) 50vw, 100vw" : "(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"}
-                  className="-z-10 object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-                <span className="absolute right-4 top-4 inline-flex size-11 items-center justify-center rounded-full bg-white/90 text-ink transition-colors group-hover:bg-amber">
-                  <ArrowUpRight className="size-5" aria-hidden />
-                </span>
-                <div className="absolute inset-x-0 bottom-0 p-5 text-white sm:p-6">
-                  <p className="text-xs font-medium uppercase tracking-wider text-amber">
-                    {count} {count === 1 ? "package" : "packages"}
-                  </p>
-                  <h3 className={`mt-1 font-semibold ${big ? "text-3xl sm:text-4xl" : "text-2xl"}`}>{c.name}</h3>
-                  <p className={`mt-1 text-sm text-white/80 ${big ? "max-w-sm sm:text-base" : "line-clamp-1"}`}>
-                    {c.tagline}
-                  </p>
-                </div>
-              </Link>
-            );
-          })}
+        <div>
+          <span className="eyebrow bg-sand text-ink">About us</span>
+          <SectionHeading strong="Journeys of the heart," soft="planned from Mahim" />
+          <div className="mt-6 space-y-4 text-lg leading-relaxed text-muted">
+            <p>
+              <strong className="text-ink">{site.legalName}</strong> is an IATA-accredited travel agency in Mahim East,
+              Mumbai. We specialise in Umrah and Hajj, and ziyarat to Iraq, Jordan, Palestine and Turkey.
+            </p>
+            <p>
+              From first-time pilgrims to elderly parents and large family groups, we handle visas, flights, hotels
+              near the Haram and ground support, with a real person on WhatsApp before and during your journey.
+            </p>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/about" className="btn btn-primary">
+              More about us <ArrowRight className="size-4" aria-hidden />
+            </Link>
+            <Link href="/contact" className="btn btn-outline">Visit our office</Link>
+          </div>
         </div>
       </section>
 
@@ -268,47 +222,27 @@ export default async function HomePage() {
         </ol>
       </section>
 
-      {/* 7. Holidays */}
-      <section className="container-x py-10 sm:py-14">
-        <SectionHeading
-          strong="Holidays"
-          soft="for every family"
-          intro="Beyond pilgrimage: relaxed, well-planned holidays across Asia and India."
-        />
-        <div className="mt-10 grid gap-5 lg:grid-cols-2">
-          {generalCategories.map((c) => {
-            const items = inCategory(c.slug);
-            return (
-              <Link
-                key={c.slug}
-                href={`/packages/${c.slug}`}
-                className="group relative isolate flex min-h-[420px] flex-col justify-end overflow-hidden rounded-[1.75rem] bg-ink p-6 text-white sm:p-8"
-              >
-                <SmartImage
-                  src={photo(c.image, 1400)}
-                  alt={c.name}
-                  fill
-                  sizes="(min-width: 1024px) 50vw, 100vw"
-                  className="-z-10 object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                <h3 className="text-3xl font-semibold sm:text-4xl">{c.name}</h3>
-                <p className="mt-2 max-w-md text-white/85">{c.description}</p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {items.map((p) => (
-                    <span key={p.slug} className="rounded-full bg-white/15 px-3 py-1 text-sm backdrop-blur">
-                      {p.route[1]}
-                    </span>
-                  ))}
-                </div>
-                <span className="mt-6 inline-flex items-center gap-2 font-semibold text-amber">
-                  Explore {c.name} <ArrowRight className="size-4" aria-hidden />
-                </span>
-              </Link>
-            );
-          })}
+      {/* Custom package */}
+      <section className="px-3 py-10 sm:px-5 sm:py-14">
+        <div className="relative isolate overflow-hidden rounded-4xl bg-ink px-6 py-14 text-white sm:rounded-5xl sm:px-12 sm:py-20">
+          <SmartImage src={photo("madinahDome", 2000)} alt="" fill sizes="100vw" className="-z-10 object-cover opacity-40" />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
+          <div className="max-w-xl">
+            <span className="eyebrow bg-white text-ink">Custom package</span>
+            <h2 className="mt-4 text-3xl font-semibold leading-tight sm:text-5xl">Want something different? Build your own package.</h2>
+            <p className="mt-4 text-white/85 sm:text-lg">
+              Your dates, your hotels, your nights in Makkah and Madinah. Tell us what you need and we&apos;ll send a
+              personalised quote.
+            </p>
+            <Link href="/custom-package" className="btn btn-amber mt-8">
+              Build your package <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </div>
         </div>
       </section>
+
+      {/* Reviews */}
+      <Reviews />
 
       {/* Partners */}
       <Partners />

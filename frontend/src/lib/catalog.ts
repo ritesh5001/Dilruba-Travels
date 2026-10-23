@@ -1,5 +1,6 @@
 import { cacheLife, cacheTag } from "next/cache";
 import type { TravelPackage } from "@dilruba/shared/catalog";
+import type { PublicReview } from "@dilruba/shared/ops";
 import type { CategorySlug } from "./packages";
 
 // Packages are managed in the admin panel and stored by the backend. Server components load
@@ -47,4 +48,20 @@ export async function getPackage(category: string, slug: string) {
 export async function packageParams() {
   const list = (await getPackages()).map((p) => ({ category: p.category as string, slug: p.slug }));
   return list.length ? list : [{ category: "umrah", slug: "__none__" }];
+}
+
+/** Published customer reviews for the home page. Refreshed together with the packages. */
+export async function getReviews(): Promise<PublicReview[]> {
+  "use cache";
+  cacheTag(CATALOG_TAG);
+  cacheLife("minutes");
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/catalog/reviews`, { signal: AbortSignal.timeout(90_000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return ((await res.json()) as { reviews: PublicReview[] }).reviews;
+  } catch (err) {
+    // Reviews are a nice-to-have: a backend hiccup hides the section instead of breaking the page.
+    console.warn(`[catalog] couldn't load reviews: ${err instanceof Error ? err.message : err}`);
+    return [];
+  }
 }

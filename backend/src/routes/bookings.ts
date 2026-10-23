@@ -6,6 +6,7 @@ import { adminNewBookingEmail, bookingReceivedEmail } from "../email/templates.t
 import { rateLimit, safeEqual } from "../lib/auth.ts";
 import { accessToken, bookingReference, parseBody } from "../lib/util.ts";
 import { paymentProvider } from "../payments/index.ts";
+import { todayIST } from "@dilruba/shared/ops";
 import { refreshWebsite } from "../services/catalog.ts";
 import { addEvent, applyReferral, balanceOf, dueNow, toPublicBooking, upsertCustomer } from "../services/crm.ts";
 
@@ -24,8 +25,8 @@ bookingsRouter.post(
       return;
     }
 
-    // Only an open departure of this package with enough seats; otherwise the request still goes
-    // through (staff can sort out dates), just without the departure.
+    // The customer picked a fixed date: it must be an open, upcoming departure of this package
+    // with enough seats, or they're told to pick another.
     let departure: { id: number; title: string } | undefined;
     if (data.departureId) {
       const d = await db
@@ -45,7 +46,17 @@ bookingsRouter.post(
         .where("packages.category", "=", data.packageCategory)
         .where("packages.slug", "=", data.packageSlug)
         .executeTakeFirst();
-      if (d && d.seats - Number(d.booked ?? 0) >= data.adults + data.children) departure = d;
+      if (!d || d.start_date <= todayIST()) {
+        return void res.status(409).json({ ok: false, error: "That date is no longer available. Please choose another date." });
+      }
+      const left = d.seats - Number(d.booked ?? 0);
+      if (left < data.adults + data.children) {
+        return void res.status(409).json({
+          ok: false,
+          error: left > 0 ? `Only ${left} seat${left === 1 ? "" : "s"} left on this date. Choose another date or fewer travellers.` : "This date is now full. Please choose another date.",
+        });
+      }
+      departure = d;
     }
 
     const { booking, customer } = await db.transaction().execute(async (trx) => {

@@ -16,6 +16,7 @@ import {
   Package,
   PlaneTakeoff,
   Settings,
+  Star,
   UserCog,
   Users,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const nav = [
   { href: "/admin/departures", label: "Departures", icon: PlaneTakeoff },
   { href: "/admin/customers", label: "Customers", icon: Users },
   { href: "/admin/packages", label: "Packages", icon: Package },
+  { href: "/admin/reviews", label: "Reviews", icon: Star },
   { href: "/admin/reports", label: "Reports", icon: BarChart3, owner: true },
   { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone, owner: true },
   { href: "/admin/staff", label: "Staff", icon: UserCog, owner: true },

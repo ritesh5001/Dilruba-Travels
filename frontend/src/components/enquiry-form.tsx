@@ -10,18 +10,6 @@ import { WhatsAppIcon } from "./icons";
 type Service = (typeof services)[number];
 type Status = { state: "idle" | "sending" | "done" } | { state: "error"; message: string };
 
-const heroTabs: { label: string; service: Service; options: string[] }[] = [
-  { label: "Umrah", service: "Umrah", options: ["Economy", "Standard", "Premium", "Ramadan Umrah"] },
-  { label: "Hajj", service: "Hajj", options: ["Hajj 2027", "Pre-registration"] },
-  { label: "Ziyarat", service: "Iraq Ziyarat", options: ["Iraq Ziyarat", "Jordan", "Palestine (Al-Aqsa)", "Turkey"] },
-  { label: "Holidays", service: "Asia Holiday", options: ["Asia Holiday", "India Holiday"] },
-];
-
-// The ziyarat and holiday chips map directly onto a service of their own.
-function resolveService(tab: (typeof heroTabs)[number], option: string): Service {
-  return (services as readonly string[]).includes(option) ? (option as Service) : tab.service;
-}
-
 function useSubmit(source: string, onSent?: () => void) {
   const [status, setStatus] = useState<Status>({ state: "idle" });
   const [sent, setSent] = useState<Partial<Enquiry>>({});
@@ -121,115 +109,6 @@ function SubmitButton({ status, label = "Get Free Quote" }: { status: Status; la
 
 const travellerOptions = Array.from({ length: 10 }, (_, i) => i + 1);
 
-/** Hero card: tabs + chips + four fields in a row, mirroring the reference's search card. */
-export function HeroEnquiryCard() {
-  const [tabIndex, setTabIndex] = useState(0);
-  const tab = heroTabs[tabIndex];
-  const [option, setOption] = useState(tab.options[0]);
-  const { status, sent, submit, reset } = useSubmit("Homepage hero");
-
-  const selectTab = (i: number) => {
-    setTabIndex(i);
-    setOption(heroTabs[i].options[0]);
-  };
-
-  return (
-    <div className="rounded-[1.75rem] bg-white p-5 text-ink shadow-2xl shadow-black/20 sm:p-6">
-      {status.state === "done" ? (
-        <Success sent={sent} onReset={reset} />
-      ) : (
-        <form
-          noValidate
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit({ ...formValues(e.currentTarget), service: resolveService(tab, option), option });
-          }}
-          className="relative"
-        >
-          <Honeypot />
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-xl font-semibold sm:text-2xl">Plan your sacred journey</h2>
-            <div role="tablist" aria-label="Journey type" className="no-scrollbar flex gap-1 overflow-x-auto rounded-full bg-sand p-1">
-              {heroTabs.map((t, i) => (
-                <button
-                  key={t.label}
-                  type="button"
-                  role="tab"
-                  aria-selected={i === tabIndex}
-                  onClick={() => selectTab(i)}
-                  className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
-                    i === tabIndex ? "bg-white text-ink shadow-sm" : "text-ink/65 hover:text-ink"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <label htmlFor="hero-name" className="label">Your name</label>
-              <input id="hero-name" name="name" autoComplete="name" required placeholder="Full name" className="field" />
-            </div>
-            <div>
-              <label htmlFor="hero-phone" className="label">Phone / WhatsApp</label>
-              <input
-                id="hero-phone"
-                name="phone"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                required
-                placeholder="+91 98XXX XXXXX"
-                className="field"
-              />
-            </div>
-            <div>
-              <label htmlFor="hero-month" className="label">Travel month</label>
-              <input id="hero-month" name="travelMonth" type="month" className="field" />
-            </div>
-            <div>
-              <label htmlFor="hero-travellers" className="label">Travellers</label>
-              <select id="hero-travellers" name="travellers" defaultValue="2" className="field appearance-none">
-                {travellerOptions.map((n) => (
-                  <option key={n} value={n}>
-                    {n === 10 ? "10+ (group)" : `${n} ${n === 1 ? "person" : "people"}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold">Interested in:</span>
-              {tab.options.map((o) => (
-                <button
-                  key={o}
-                  type="button"
-                  aria-pressed={o === option}
-                  onClick={() => setOption(o)}
-                  className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
-                    o === option ? "border-ink bg-ink text-white" : "border-line text-ink/75 hover:border-ink"
-                  }`}
-                >
-                  {o}
-                </button>
-              ))}
-            </div>
-            <SubmitButton status={status} />
-          </div>
-          <div className="mt-3">
-            <ErrorText status={status} />
-          </div>
-        </form>
-      )}
-    </div>
-  );
-}
-
-/** Stacked form for the contact page, CTA band and package pages. */
 export function EnquiryForm({
   source,
   packageName,

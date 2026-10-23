@@ -83,7 +83,7 @@ export type AdminBookingDetail = AdminBooking & {
   invoiceNumber: string | null;
   /** Suggested TCS for this package's category at the current rate (paise); 0 if it doesn't apply. */
   suggestedTcs: number;
-  feedback: { rating: number; comment: string | null; createdAt: string } | null;
+  feedback: { rating: number; comment: string | null; canPublish: boolean; reviewId: number | null; createdAt: string } | null;
   feedbackLink: string;
   quoteId: number | null;
 };

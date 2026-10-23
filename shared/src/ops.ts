@@ -342,7 +342,25 @@ export const feedbackInputSchema = z.object({
   token: z.string().min(10).max(100),
   rating: z.coerce.number().int().min(1, "Choose a rating").max(5),
   comment: optionalText(2000),
+  canPublish: z.boolean().default(false),
 });
+
+// ---------------- Reviews (shown on the website) ----------------
+
+export type PublicReview = { id: number; name: string; location: string | null; trip: string | null; rating: number; body: string };
+
+export type AdminReview = PublicReview & { published: boolean; sortOrder: number; fromFeedback: boolean; createdAt: string };
+
+export const reviewInputSchema = z.object({
+  name: z.string().trim().min(2, "Add the customer's name").max(60),
+  location: optionalText(60),
+  trip: optionalText(80),
+  rating: z.coerce.number().int().min(1).max(5),
+  body: z.string().trim().min(10, "Add the review text").max(600, "Keep it under 600 characters so it fits the card"),
+  published: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).max(10_000).default(0),
+});
+export type ReviewInput = z.input<typeof reviewInputSchema>;
 
 // ---------------- Settings ----------------
 

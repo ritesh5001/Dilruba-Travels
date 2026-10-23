@@ -5,7 +5,7 @@ import { site } from "@/lib/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const packages = await getPackages();
-  const pages = ["", "/packages", "/about", "/contact", "/terms", "/privacy-policy"];
+  const pages = ["", "/packages", "/custom-package", "/about", "/contact", "/terms", "/privacy-policy"];
   return [
     ...pages.map((path) => ({ url: `${site.url}${path}`, priority: path === "" ? 1 : 0.6 })),
     ...categories.map((c) => ({

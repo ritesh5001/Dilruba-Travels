@@ -259,7 +259,23 @@ export interface FeedbackTable {
   booking_id: number;
   rating: number;
   comment: string | null;
+  /** The customer agreed we may show their comment on the website. */
+  can_publish: ColumnType<boolean, boolean | undefined, boolean>;
   created_at: CreatedAt;
+}
+
+export interface ReviewTable {
+  id: Generated<number>;
+  name: string;
+  location: string | null;
+  trip: string | null;
+  rating: number;
+  body: string;
+  published: ColumnType<boolean, boolean | undefined, boolean>;
+  sort_order: ColumnType<number, number | undefined, number>;
+  feedback_id: number | null;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
 }
 
 export interface SettingTable {
@@ -277,6 +293,7 @@ export interface Database {
   booking_costs: BookingCostTable;
   quotes: QuoteTable;
   feedback: FeedbackTable;
+  reviews: ReviewTable;
   settings: SettingTable;
   customers: CustomerTable;
   leads: LeadTable;
@@ -301,3 +318,4 @@ export type Traveller = Selectable<TravellerTable>;
 export type Instalment = Selectable<InstalmentTable>;
 export type BookingCost = Selectable<BookingCostTable>;
 export type Quote = Selectable<QuoteTable>;
+export type Review = Selectable<ReviewTable>;

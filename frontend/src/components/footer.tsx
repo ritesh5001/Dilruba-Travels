@@ -52,6 +52,7 @@ export function Footer() {
             </ul>
             <h3 className="mt-8 text-base font-semibold text-white">Company</h3>
             <ul className="mt-4 space-y-2.5 text-sm">
+              <li><Link href="/custom-package" className="hover:text-amber">Custom Package</Link></li>
               <li><Link href="/about" className="hover:text-amber">About Us</Link></li>
               <li><Link href="/contact" className="hover:text-amber">Contact</Link></li>
               <li><Link href="/privacy-policy" className="hover:text-amber">Privacy Policy</Link></li>

@@ -25,7 +25,7 @@ enquiryRouter.post(
     }
 
     const { lead, customer } = await db.transaction().execute(async (trx) => {
-      const customer = await upsertCustomer(trx, { name: enquiry.name, phone: enquiry.phone });
+      const customer = await upsertCustomer(trx, { name: enquiry.name, phone: enquiry.phone, email: enquiry.email ?? null });
       const referrer = await applyReferral(trx, customer.id, referralCode);
       const lead = await trx
         .insertInto("leads")

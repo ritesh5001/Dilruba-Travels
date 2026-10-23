@@ -356,6 +356,29 @@ migrations["0004_crm_operations"] = {
   },
 };
 
+migrations["0005_reviews"] = {
+  async up(db: Kysely<any>) {
+    // Customer reviews shown on the website. Added by staff (from Google, WhatsApp…) or
+    // published from a customer's own feedback, which records whether they agreed to that.
+    await db.schema
+      .createTable("reviews")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("name", "text", (c) => c.notNull())
+      .addColumn("location", "text")
+      .addColumn("trip", "text")
+      .addColumn("rating", "integer", (c) => c.notNull())
+      .addColumn("body", "text", (c) => c.notNull())
+      .addColumn("published", "boolean", (c) => c.notNull().defaultTo(false))
+      .addColumn("sort_order", "integer", (c) => c.notNull().defaultTo(0))
+      .addColumn("feedback_id", "integer", (c) => c.unique().references("feedback.id").onDelete("set null"))
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .execute();
+    await db.schema.createIndex("reviews_listing_idx").on("reviews").columns(["published", "sort_order"]).execute();
+    await db.schema.alterTable("feedback").addColumn("can_publish", "boolean", (c) => c.notNull().defaultTo(false)).execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

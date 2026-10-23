@@ -15,6 +15,7 @@ import { leadsRouter } from "./leads.ts";
 import { mediaRouter, packagesRouter } from "./packages.ts";
 import { quotesRouter } from "./quotes.ts";
 import { reportsRouter } from "./reports.ts";
+import { reviewsRouter } from "./reviews.ts";
 import { settingsRouter } from "./settings.ts";
 import { staffRouter } from "./staff.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminPayment } from "./mappers.ts";
@@ -154,6 +155,7 @@ adminRouter.use("/media", mediaRouter);
 adminRouter.use("/departures", departuresRouter);
 adminRouter.use("/quotes", quotesRouter);
 adminRouter.use("/reports", reportsRouter);
+adminRouter.use("/reviews", reviewsRouter);
 adminRouter.use("/staff", requireOwner, staffRouter);
 adminRouter.use("/settings", requireOwner, settingsRouter);
 

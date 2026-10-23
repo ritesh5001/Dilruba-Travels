@@ -22,7 +22,9 @@ import {
   type DocumentKind,
   type TravellerInput,
 } from "@dilruba/shared/ops";
-import { ApiError } from "@/lib/admin-api";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ApiError, adminFetch } from "@/lib/admin-api";
 import { Card, Empty, InstalmentBadge, VisaBadge, formatDate } from "./ui";
 
 type Mutate = (path: string, method: string, body?: unknown, message?: string) => Promise<boolean>;
@@ -534,6 +536,9 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
 // ---------------- Feedback ----------------
 
 export function FeedbackCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: boolean; mutate: Mutate }) {
+  const router = useRouter();
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   if (b.feedback) {
     return (
       <Card title="Customer feedback">
@@ -543,7 +548,36 @@ export function FeedbackCard({ b, busy, mutate }: { b: AdminBookingDetail; busy:
           ))}
         </p>
         {b.feedback.comment && <p className="mt-2 whitespace-pre-wrap text-sm">“{b.feedback.comment}”</p>}
-        <p className="mt-2 text-xs text-muted">{formatDate(b.feedback.createdAt)}</p>
+        <p className="mt-2 text-xs text-muted">
+          {formatDate(b.feedback.createdAt)}
+          {b.feedback.comment && (b.feedback.canPublish ? " · OK to show on the website" : " · Not for the website")}
+        </p>
+        {b.feedback.reviewId ? (
+          <Link href="/admin/reviews" className="btn btn-outline mt-3 w-full !py-2">View on the Reviews page</Link>
+        ) : (
+          b.feedback.comment &&
+          b.feedback.canPublish && (
+            <button
+              type="button"
+              disabled={busy || publishing}
+              onClick={async () => {
+                setPublishing(true);
+                setPublishError(null);
+                try {
+                  await adminFetch(`/reviews/from-feedback/${b.id}`, { method: "POST" });
+                  router.push("/admin/reviews");
+                } catch (err) {
+                  setPublishError(err instanceof Error ? err.message : "Couldn't create the review");
+                  setPublishing(false);
+                }
+              }}
+              className="btn btn-outline mt-3 w-full !py-2 disabled:opacity-50"
+            >
+              Publish as website review
+            </button>
+          )
+        )}
+        {publishError && <p role="alert" className="mt-2 text-xs font-medium text-brand">{publishError}</p>}
       </Card>
     );
   }

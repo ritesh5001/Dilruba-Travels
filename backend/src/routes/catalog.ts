@@ -38,6 +38,19 @@ catalogRouter.get("/catalog/packages", async (_req, res) => {
   res.json({ packages: rows.map((r) => ({ ...toTravelPackage(r), departures: byPackage.get(r.id) })) });
 });
 
+/** Published reviews for the home page, in the order set in the admin panel. */
+catalogRouter.get("/catalog/reviews", async (_req, res) => {
+  const rows = await db
+    .selectFrom("reviews")
+    .select(["id", "name", "location", "trip", "rating", "body"])
+    .where("published", "=", true)
+    .orderBy("sort_order")
+    .orderBy("created_at", "desc")
+    .limit(30)
+    .execute();
+  res.json({ reviews: rows });
+});
+
 /** Uploaded images. An id's image never changes, so browsers and the CDN may keep it forever. */
 catalogRouter.get("/media/:file", async (req, res) => {
   const match = /^(\d+)\.webp$/.exec(req.params.file);

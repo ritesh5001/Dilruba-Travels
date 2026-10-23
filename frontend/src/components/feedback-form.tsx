@@ -16,6 +16,7 @@ export function FeedbackForm() {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState("");
+  const [canPublish, setCanPublish] = useState(true);
   const [state, setState] = useState<{ busy: boolean; error?: string; done?: boolean; reviewUrl?: string | null }>({ busy: false });
 
   const load = useCallback(async () => {
@@ -43,7 +44,7 @@ export function FeedbackForm() {
       const res = await fetch(`/api/feedback/${encodeURIComponent(ref)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, rating, comment }),
+        body: JSON.stringify({ token, rating, comment, canPublish: canPublish && !!comment.trim() }),
       });
       const body = (await res.json()) as { googleReviewUrl?: string | null; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Couldn't send your feedback");
@@ -105,6 +106,12 @@ export function FeedbackForm() {
       </fieldset>
       <label htmlFor="fb-comment" className="label mt-4 text-left">{rating && rating <= 3 ? "What could we have done better?" : "Anything you'd like to share?"} <span className="font-normal text-muted">(optional)</span></label>
       <textarea id="fb-comment" value={comment} onChange={(e) => setComment(e.target.value)} rows={4} maxLength={2000} className="field resize-none" placeholder="Hotels, guide, food, flights…" />
+      {comment.trim() && (
+        <label className="mt-3 flex items-start gap-2 text-left text-sm text-muted">
+          <input type="checkbox" checked={canPublish} onChange={(e) => setCanPublish(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-[var(--color-brand)]" />
+          You may show my review on your website (with my first name and last initial).
+        </label>
+      )}
       <button type="submit" disabled={state.busy} className="btn btn-primary mt-5 w-full disabled:opacity-70">
         {state.busy && <Loader2 className="size-4 animate-spin" aria-hidden />} Send feedback
       </button>

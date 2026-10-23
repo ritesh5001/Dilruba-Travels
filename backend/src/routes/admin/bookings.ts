@@ -56,7 +56,12 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
     db.selectFrom("travellers").selectAll().where("booking_id", "=", id).orderBy("id").execute(),
     db.selectFrom("instalments").selectAll().where("booking_id", "=", id).execute(),
     isOwner ? db.selectFrom("booking_costs").selectAll().where("booking_id", "=", id).orderBy("id").execute() : Promise.resolve(null),
-    db.selectFrom("feedback").select(["rating", "comment", "created_at"]).where("booking_id", "=", id).executeTakeFirst(),
+    db
+      .selectFrom("feedback")
+      .leftJoin("reviews", "reviews.feedback_id", "feedback.id")
+      .select(["feedback.rating", "feedback.comment", "feedback.can_publish", "feedback.created_at", "reviews.id as review_id"])
+      .where("feedback.booking_id", "=", id)
+      .executeTakeFirst(),
     db.selectFrom("quotes").select("id").where("booking_id", "=", id).executeTakeFirst(),
     getSettings(),
   ]);
@@ -77,7 +82,9 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
     costs: costs?.map(toAdminCost) ?? null,
     invoiceNumber: row.invoice_number,
     suggestedTcs: tcsFor(settings, row.package_category, row.total_amount),
-    feedback: feedback ? { rating: feedback.rating, comment: feedback.comment, createdAt: feedback.created_at.toISOString() } : null,
+    feedback: feedback
+      ? { rating: feedback.rating, comment: feedback.comment, canPublish: feedback.can_publish, reviewId: feedback.review_id, createdAt: feedback.created_at.toISOString() }
+      : null,
     feedbackLink: feedbackLink(row),
     quoteId: quote?.id ?? null,
   };
