@@ -4,93 +4,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Menu, Phone, X } from "lucide-react";
-import { navLinks, site, whatsappLink } from "@/lib/site";
+import { ChevronDown, LayoutGrid, Minus, Phone, Plus, X } from "lucide-react";
+import type { MenuItem } from "@/lib/menu";
+import { site, whatsappLink } from "@/lib/site";
 import { Logo } from "./logo";
 import { WhatsAppIcon } from "./icons";
+import { navIcons } from "./nav-icons";
 
-function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  if (href === "/packages") return pathname === "/packages";
-  return pathname === href || pathname.startsWith(`${href}/`);
+function isActive(pathname: string, item: MenuItem) {
+  if (item.href === "/packages") return pathname === "/packages" || pathname.startsWith("/packages/asia") || pathname.startsWith("/packages/domestic");
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function NavBar({ sticky, onMenu }: { sticky?: boolean; onMenu: () => void }) {
+/**
+ * Solid header bar under the top strip: logo, a row of icon-over-label menu items (destinations
+ * open a dropdown of their packages) and the quote button. On phones: logo, quote button and a
+ * grid button that opens the menu drawer.
+ */
+export function Header({ menu }: { menu: MenuItem[] }) {
   const pathname = usePathname();
-
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <div
-        className={`rounded-full bg-white px-4 py-2 ${sticky ? "" : "shadow-lg shadow-black/10"}`}
-      >
-        <Logo className="h-8 w-auto sm:h-9" />
-      </div>
-
-      <nav
-        aria-label="Main"
-        className={`hidden items-center gap-1 rounded-full p-1.5 lg:flex ${
-          sticky ? "bg-sand" : "bg-white/95 shadow-lg shadow-black/10 backdrop-blur"
-        }`}
-      >
-        {navLinks.map((link) => {
-          const active = isActive(pathname, link.href);
-          return (
-            <Link
-              key={link.href}
-              href={link.href}
-              aria-current={active ? "page" : undefined}
-              className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-ink text-white"
-                  : "text-ink/75 hover:bg-ink/5 hover:text-ink"
-              }`}
-            >
-              {link.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="flex items-center gap-2">
-        <a
-          href={site.phoneHref}
-          className={`hidden items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold sm:inline-flex ${
-            sticky ? "border border-line bg-white text-ink" : "bg-white text-ink shadow-lg shadow-black/10"
-          }`}
-        >
-          <Phone className="size-4" aria-hidden />
-          <span className="hidden xl:inline">{site.phone}</span>
-          <span className="xl:hidden">Call</span>
-        </a>
-        <a
-          href={whatsappLink()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-primary hidden !py-2.5 text-sm sm:inline-flex"
-        >
-          <WhatsAppIcon className="size-4" />
-          Get Free Quote
-        </a>
-        <button
-          type="button"
-          onClick={onMenu}
-          aria-label="Open menu"
-          className="inline-flex size-11 items-center justify-center rounded-full bg-white text-ink shadow-lg shadow-black/10 lg:hidden"
-        >
-          <Menu className="size-5" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-export function Header() {
-  const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
-  const pathname = usePathname();
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 220);
+    const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -103,11 +40,8 @@ export function Header() {
     };
   }, [open]);
 
-  // The header is rendered inside each page's hero, which is its own stacking context
-  // (`isolate`), so a fixed bar's z-index there would only rank it within the hero and
-  // later positioned content (images, cards) would paint over it. The scrolled bar and the
-  // mobile menu therefore render straight into <body>. Both start hidden, so mounting them
-  // after hydration changes nothing on first paint.
+  // The drawer renders into <body> so nothing on the page can paint over it. It starts closed,
+  // so mounting it after hydration changes nothing on first paint.
   const mounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -115,86 +49,163 @@ export function Header() {
   );
 
   return (
-    <>
-      {/* Sits inside the hero, like the reference design */}
-      <header className="absolute inset-x-0 top-0 z-30 p-3 sm:p-5">
-        <NavBar onMenu={() => setOpen(true)} />
-      </header>
+    <header className={`sticky top-0 z-40 border-b bg-white transition-shadow ${scrolled ? "border-line shadow-md shadow-black/5" : "border-transparent"}`}>
+      <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-4 px-3 py-2 sm:px-5 lg:py-1.5">
+        <Logo className="h-9 w-auto sm:h-10 xl:h-11" />
 
-      {mounted && createPortal(overlays(), document.body)}
+        <nav aria-label="Main" className="hidden lg:block">
+          <ul className="flex items-stretch">
+            {menu.map((item) => (
+              <DesktopItem key={item.href + item.label} item={item} active={isActive(pathname, item)} />
+            ))}
+          </ul>
+        </nav>
+
+        <div className="flex items-center gap-2">
+          <a
+            href={whatsappLink()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-primary !px-4 !py-2 text-sm sm:!px-5 sm:!py-2.5"
+          >
+            <WhatsAppIcon className="size-4" />
+            <span className="sm:hidden">Quote</span>
+            <span className="hidden sm:inline">Get Free Quote</span>
+          </a>
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Open menu"
+            aria-expanded={open}
+            className="inline-flex size-11 items-center justify-center rounded-xl text-ink hover:bg-sand lg:hidden"
+          >
+            <LayoutGrid className="size-7" strokeWidth={1.6} />
+          </button>
+        </div>
+      </div>
+
+      {mounted && createPortal(<Drawer menu={menu} open={open} onClose={() => setOpen(false)} pathname={pathname} />, document.body)}
+    </header>
+  );
+}
+
+function DesktopItem({ item, active }: { item: MenuItem; active: boolean }) {
+  const Icon = navIcons[item.icon];
+  const label = (
+    <>
+      <Icon className="size-8 transition-transform group-hover:-translate-y-0.5" />
+      <span className="flex items-center gap-0.5 text-[13px] font-medium xl:text-sm">
+        {item.label}
+        {item.children && <ChevronDown className="size-3.5 text-muted transition-transform group-hover:rotate-180" aria-hidden />}
+      </span>
     </>
   );
+  const linkClass = `flex flex-col items-center gap-1 rounded-xl px-2.5 py-2 transition-colors xl:px-3.5 ${active ? "text-brand" : "text-ink hover:text-brand"}`;
 
-  function overlays() {
-    return (
-      <>
-        {/* Compact bar that slides in once the hero is scrolled past */}
-        <div
-          aria-hidden={!scrolled}
-          inert={!scrolled}
-          className={`fixed inset-x-0 top-0 z-40 border-b border-line bg-white/90 px-3 py-2 backdrop-blur-md transition-transform duration-300 sm:px-5 ${
-            scrolled ? "translate-y-0" : "-translate-y-full"
-          }`}
-        >
-          <div className="mx-auto max-w-7xl">
-            <NavBar sticky onMenu={() => setOpen(true)} />
-          </div>
-        </div>
-
-        {/* Mobile menu */}
-        <div
-          className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`}
-          aria-hidden={!open}
-          inert={!open}
-        >
-          <div
-            className={`absolute inset-0 bg-ink/50 transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
-            onClick={() => setOpen(false)}
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Menu"
-            className={`absolute inset-y-0 right-0 flex w-full max-w-sm flex-col bg-white p-5 shadow-2xl transition-transform duration-300 ${
-              open ? "translate-x-0" : "translate-x-full"
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <Logo className="h-9 w-auto" />
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close menu"
-                className="inline-flex size-11 items-center justify-center rounded-full bg-sand"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <nav aria-label="Mobile" className="mt-8 flex flex-col gap-1">
-              {navLinks.map((link) => (
+  return (
+    <li className="group relative">
+      <Link href={item.href} aria-current={active ? "page" : undefined} className={linkClass}>
+        {label}
+      </Link>
+      {active && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-brand" aria-hidden />}
+      {item.children && (
+        // Opens on hover and on keyboard focus within the item.
+        <div className="invisible absolute left-1/2 top-full z-50 w-64 -translate-x-1/2 pt-2 opacity-0 transition-all duration-150 group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+          <ul className="overflow-hidden rounded-2xl border border-line bg-white py-2 shadow-xl shadow-black/10">
+            {item.children.map((c, i) => (
+              <li key={c.href + c.label}>
                 <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setOpen(false)}
-                  className={`rounded-2xl px-4 py-3 text-lg font-medium ${
-                    isActive(pathname, link.href) ? "bg-sand text-brand" : "text-ink hover:bg-sand"
-                  }`}
+                  href={c.href}
+                  className={`block px-4 py-2 text-sm hover:bg-sand hover:text-brand ${i === item.children!.length - 1 ? "mt-1 border-t border-line pt-2.5 font-semibold text-brand" : "text-ink"}`}
                 >
-                  {link.label}
+                  {c.label}
                 </Link>
-              ))}
-            </nav>
-            <div className="mt-auto grid gap-3">
-              <a href={site.phoneHref} className="btn btn-outline">
-                <Phone className="size-4" aria-hidden /> {site.phone}
-              </a>
-              <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
-                <WhatsAppIcon className="size-4" /> Chat on WhatsApp
-              </a>
-            </div>
-          </div>
+              </li>
+            ))}
+          </ul>
         </div>
-      </>
-    );
-  }
+      )}
+    </li>
+  );
+}
+
+function Drawer({ menu, open, onClose, pathname }: { menu: MenuItem[]; open: boolean; onClose: () => void; pathname: string }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  return (
+    <div className={`fixed inset-0 z-50 lg:hidden ${open ? "" : "pointer-events-none"}`} aria-hidden={!open} inert={!open}>
+      <div className={`absolute inset-0 bg-ink/50 transition-opacity ${open ? "opacity-100" : "opacity-0"}`} onClick={onClose} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+        className={`absolute inset-y-0 left-0 flex w-[85%] max-w-sm flex-col overflow-y-auto bg-white shadow-2xl transition-transform duration-300 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-6">
+          <Logo className="h-14 w-auto" />
+          <button type="button" onClick={onClose} aria-label="Close menu" className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-ink">
+            <X className="size-5" />
+          </button>
+        </div>
+
+        <nav aria-label="Mobile" className="px-3 pb-4">
+          <ul>
+            {menu.map((item) => {
+              const Icon = navIcons[item.icon];
+              const active = isActive(pathname, item);
+              const isOpen = expanded === item.label;
+              return (
+                <li key={item.label}>
+                  <div className="flex items-center">
+                    <Link
+                      href={item.href}
+                      onClick={onClose}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex flex-1 items-center gap-3.5 rounded-xl px-2 py-3 text-lg ${active ? "font-semibold text-brand" : "text-ink"}`}
+                    >
+                      <Icon className="size-9 shrink-0" />
+                      {item.label}
+                    </Link>
+                    {item.children && (
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(isOpen ? null : item.label)}
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? "Hide" : "Show"} ${item.label} packages`}
+                        className="inline-flex size-11 items-center justify-center rounded-full text-ink hover:bg-sand"
+                      >
+                        {isOpen ? <Minus className="size-5" /> : <Plus className="size-5" />}
+                      </button>
+                    )}
+                  </div>
+                  {item.children && isOpen && (
+                    <ul className="mb-2 ml-[3.25rem] border-l-2 border-line pl-3">
+                      {item.children.map((c) => (
+                        <li key={c.href + c.label}>
+                          <Link href={c.href} onClick={onClose} className="block py-2 text-[15px] text-ink/80 hover:text-brand">
+                            {c.label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+
+        <div className="mt-auto grid gap-3 border-t border-line p-5">
+          <a href={site.phoneHref} className="btn btn-outline">
+            <Phone className="size-4" aria-hidden /> {site.phone}
+          </a>
+          <a href={whatsappLink()} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
+            <WhatsAppIcon className="size-4" /> Chat on WhatsApp
+          </a>
+        </div>
+      </div>
+    </div>
+  );
 }

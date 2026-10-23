@@ -5,6 +5,7 @@ import { PageHero } from "@/components/page-hero";
 import { SectionHeading } from "@/components/section-heading";
 import { SmartImage } from "@/components/smart-image";
 import { CtaBand } from "@/components/cta-band";
+import { Partners } from "@/components/partners";
 import { photo } from "@/lib/images";
 import { categories } from "@/lib/packages";
 import { fullAddress, site } from "@/lib/site";
@@ -143,6 +144,7 @@ export default function AboutPage() {
       </section>
 
       <div className="pb-10 sm:pb-14">
+        <Partners />
         <CtaBand source="About page" />
       </div>
     </>

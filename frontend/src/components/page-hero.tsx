@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import { Header } from "./header";
 import { SmartImage } from "./smart-image";
 
 type Crumb = { href?: string; label: string };
@@ -26,8 +25,7 @@ export function PageHero({
       <div className="relative isolate overflow-hidden rounded-4xl bg-ink sm:rounded-5xl">
         <SmartImage src={image} alt="" fill priority sizes="100vw" className="-z-10 object-cover" />
         <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/55 via-black/35 to-black/70" />
-        <Header />
-        <div className="container-x pb-12 pt-32 text-white sm:pb-16 sm:pt-40">
+        <div className="container-x pb-12 pt-12 text-white sm:pb-16 sm:pt-20">
           {crumbs && (
             <nav aria-label="Breadcrumb" className="mb-5 flex flex-wrap items-center gap-1 text-sm text-white/75">
               {crumbs.map((c, i) => (

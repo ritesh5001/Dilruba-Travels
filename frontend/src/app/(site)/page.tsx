@@ -12,8 +12,8 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { Header } from "@/components/header";
 import { HeroEnquiryCard } from "@/components/enquiry-form";
+import { Partners } from "@/components/partners";
 import { SmartImage } from "@/components/smart-image";
 import { Carousel } from "@/components/carousel";
 import { PackageCard } from "@/components/package-card";
@@ -95,9 +95,7 @@ export default async function HomePage() {
             className="-z-10 object-cover"
           />
           <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/60 via-black/30 to-black/60" />
-          <Header />
-
-          <div className="container-x flex flex-col items-center pb-6 pt-32 text-center text-white sm:pb-10 sm:pt-40 lg:pt-44">
+          <div className="container-x flex flex-col items-center pb-6 pt-14 text-center text-white sm:pb-10 sm:pt-20 lg:pt-24">
             <span className="eyebrow bg-white text-ink">Umrah · Hajj · Ziyarat · Holidays</span>
             <h1 className="mt-5 max-w-4xl text-[2.6rem] font-semibold leading-[1.05] sm:text-6xl lg:text-7xl">
               Your Sacred Journey, Planned with Care.
@@ -311,6 +309,9 @@ export default async function HomePage() {
           })}
         </div>
       </section>
+
+      {/* Partners */}
+      <Partners />
 
       {/* 8. FAQ */}
       <section className="container-x grid gap-10 py-10 sm:py-14 lg:grid-cols-[0.8fr_1.2fr]">
