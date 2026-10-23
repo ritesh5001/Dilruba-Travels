@@ -3,22 +3,24 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarX2, Loader2, Send, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { bookingRequestSchema } from "@dilruba/shared/booking";
 import type { CategorySlug } from "@dilruba/shared/catalog";
+import { enquirySchema, type services } from "@dilruba/shared/enquiry";
 import { formatDay, type PublicDeparture } from "@dilruba/shared/ops";
+import { serviceFor } from "@/lib/packages";
 import { getReferral } from "@/lib/referral";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
-/** A package that has at least one upcoming group date. */
+/** A published package and its upcoming group dates (possibly none yet). */
 export type BookablePackage = { category: CategorySlug; slug: string; title: string; departures: PublicDeparture[] };
 
-const tabs: { label: string; categories: CategorySlug[] }[] = [
-  { label: "Umrah", categories: ["umrah"] },
-  { label: "Hajj", categories: ["hajj"] },
-  { label: "Ziyarat", categories: ["iraq", "jordan", "palestine", "turkey"] },
-  { label: "Holidays", categories: ["asia", "domestic"] },
+const tabs: { label: string; categories: CategorySlug[]; service: (typeof services)[number] }[] = [
+  { label: "Umrah", categories: ["umrah"], service: "Umrah" },
+  { label: "Hajj", categories: ["hajj"], service: "Hajj" },
+  { label: "Ziyarat", categories: ["iraq", "jordan", "palestine", "turkey"], service: "Iraq Ziyarat" },
+  { label: "Holidays", categories: ["asia", "domestic"], service: "Asia Holiday" },
 ];
 
 const counts = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
@@ -30,38 +32,82 @@ function dateLabel(d: PublicDeparture) {
 }
 
 /**
- * The home page booking card: pick a journey type, one of its packages, then one of the group
- * dates the team has opened in the admin panel. Submitting creates a booking request on that
- * date (seats are held) and opens the customer's booking page.
+ * The home page booking card: pick a journey type, a package, then one of the group dates the
+ * team has opened in the admin panel. With a date, submitting creates a booking request on it
+ * (seats are held) and opens the customer's booking page. When a package has no open dates the
+ * date box is disabled and the same form sends an enquiry instead, so the team can call back.
  */
 export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
   const router = useRouter();
   const inTab = (i: number) => packages.filter((p) => tabs[i]!.categories.includes(p.category));
-  // Start on the first journey type that has dates.
-  const [tabIndex, setTabIndex] = useState(() => Math.max(0, tabs.findIndex((_, i) => inTab(i).length > 0)));
+  const hasDates = (p: BookablePackage) => p.departures.some((d) => d.seatsLeft > 0);
+  // Start on the first journey type with open dates (Umrah if none have any).
+  const [tabIndex, setTabIndex] = useState(() => Math.max(0, tabs.findIndex((_, i) => inTab(i).some(hasDates))));
   const choices = inTab(tabIndex);
-  const [pkgKey, setPkgKey] = useState(() => (choices[0] ? `${choices[0].category}/${choices[0].slug}` : ""));
+  const firstKey = (list: BookablePackage[]) => {
+    const p = list.find(hasDates) ?? list[0];
+    return p ? `${p.category}/${p.slug}` : "";
+  };
+  const [pkgKey, setPkgKey] = useState(() => firstKey(choices));
   const pkg = choices.find((p) => `${p.category}/${p.slug}` === pkgKey) ?? choices[0];
+  const open = pkg ? hasDates(pkg) : false;
   const [departureId, setDepartureId] = useState("");
   const departure = pkg?.departures.find((d) => String(d.id) === departureId);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [enquired, setEnquired] = useState<string | null>(null);
 
-  function selectTab(i: number) {
-    setTabIndex(i);
-    const first = inTab(i)[0];
-    setPkgKey(first ? `${first.category}/${first.slug}` : "");
+  function reset(next: { tab?: number; key?: string }) {
+    if (next.tab !== undefined) setTabIndex(next.tab);
+    setPkgKey(next.key ?? "");
     setDepartureId("");
     setError(null);
   }
 
+  async function send(url: string, body: unknown) {
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = (await res.json().catch(() => ({}))) as { reference?: string; token?: string; error?: string };
+    if (!res.ok) throw new Error(data.error ?? "failed");
+    return data;
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!pkg) return;
-    if (!departure) return setError("Please choose a travel date");
-    const f = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const f = Object.fromEntries(new FormData(e.currentTarget).entries()) as Record<string, string>;
     const adults = Number(f.adults);
     const children = Number(f.children);
+
+    // No open dates: the same details go to the team as an enquiry.
+    if (!open) {
+      const what = pkg?.title ?? `${tabs[tabIndex]!.label} package`;
+      const parsed = enquirySchema.safeParse({
+        name: f.name,
+        phone: f.phone,
+        email: f.email || undefined,
+        service: pkg ? serviceFor[pkg.category] : tabs[tabIndex]!.service,
+        packageName: pkg?.title,
+        travellers: Math.min(99, adults + children),
+        message: `Asked for the next available dates for ${what} (${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}). No dates were open on the website.`,
+        source: "Homepage booking card",
+        referralCode: getReferral(),
+        website: f.website || undefined,
+      });
+      if (!parsed.success) return setError(parsed.error.issues[0]?.message ?? "Please check the form");
+      setError(null);
+      setSending(true);
+      try {
+        await send("/api/enquiry", parsed.data);
+        setEnquired(f.name.split(" ")[0] ?? "");
+      } catch (err) {
+        setError(err instanceof Error && err.message !== "failed" ? err.message : "We couldn't send that just now. Please try again, or WhatsApp us.");
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!pkg) return;
+    if (!departure) return setError("Please choose a travel date");
     if (adults + children > departure.seatsLeft) {
       return setError(`Only ${departure.seatsLeft} seat${departure.seatsLeft === 1 ? "" : "s"} left on this date. Choose another date or fewer travellers.`);
     }
@@ -79,13 +125,12 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
     setError(null);
     setSending(true);
     try {
-      const res = await fetch("/api/bookings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed.data) });
-      const body = (await res.json()) as { reference?: string; token?: string; error?: string };
-      if (!res.ok || !body.reference) throw new Error(body.error ?? "Booking failed");
+      const body = await send("/api/bookings", parsed.data);
+      if (!body.reference) throw new Error("failed");
       router.push(`/booking?ref=${body.reference}&t=${encodeURIComponent(body.token ?? "")}&new=1`);
     } catch (err) {
       setSending(false);
-      setError(err instanceof Error && err.message !== "Booking failed" ? err.message : "We couldn't send your booking just now. Please try again, or WhatsApp us.");
+      setError(err instanceof Error && err.message !== "failed" ? err.message : "We couldn't send your booking just now. Please try again, or WhatsApp us.");
     }
   }
 
@@ -100,7 +145,7 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
               type="button"
               role="tab"
               aria-selected={i === tabIndex}
-              onClick={() => selectTab(i)}
+              onClick={() => reset({ tab: i, key: firstKey(inTab(i)) })}
               className={`shrink-0 rounded-full px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${i === tabIndex ? "bg-white text-ink shadow-sm" : "text-ink/65 hover:text-ink"}`}
             >
               {t.label}
@@ -109,20 +154,18 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
         </div>
       </div>
 
-      {!pkg ? (
-        <div className="mt-6 flex flex-col items-center gap-4 rounded-2xl bg-sand px-5 py-8 text-center">
-          <CalendarX2 className="size-9 text-brand" aria-hidden />
-          <div>
-            <p className="font-semibold">No fixed {tabs[tabIndex]!.label.toLowerCase()} dates are open right now</p>
-            <p className="mt-1 text-sm text-muted">Tell us when you&apos;d like to travel and we&apos;ll build a package around your dates.</p>
-          </div>
-          <div className="flex flex-wrap justify-center gap-3">
-            <Link href="/custom-package" className="btn btn-primary">
-              <Sparkles className="size-4" aria-hidden /> Build a custom package
-            </Link>
-            <a href={whatsappLink(`Assalamu Alaikum, I'd like to know the next ${tabs[tabIndex]!.label} dates.`)} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
-              <WhatsAppIcon className="size-4" /> Ask on WhatsApp
+      {enquired !== null ? (
+        <div className="mt-6 flex flex-col items-center gap-3 py-6 text-center" role="status">
+          <CheckCircle2 className="size-12 text-[#25d366]" aria-hidden />
+          <p className="text-xl font-semibold">JazakAllah Khair{enquired ? `, ${enquired}` : ""}!</p>
+          <p className="max-w-md text-sm text-muted">We&apos;ll contact you with the next available dates and today&apos;s best price.</p>
+          <div className="mt-2 flex flex-wrap justify-center gap-3">
+            <a href={whatsappLink(`Assalamu Alaikum, I just asked for dates for ${pkg?.title ?? tabs[tabIndex]!.label}.`)} target="_blank" rel="noopener noreferrer" className="btn btn-whatsapp">
+              <WhatsAppIcon className="size-4" /> Continue on WhatsApp
             </a>
+            <button type="button" onClick={() => setEnquired(null)} className="btn btn-outline">
+              Back to the form
+            </button>
           </div>
         </div>
       ) : (
@@ -134,37 +177,41 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
             </label>
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold">Package:</span>
-            {choices.map((p) => {
-              const key = `${p.category}/${p.slug}`;
-              const on = p === pkg;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => {
-                    setPkgKey(key);
-                    setDepartureId("");
-                    setError(null);
-                  }}
-                  className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${on ? "border-ink bg-ink text-white" : "border-line text-ink/75 hover:border-ink"}`}
-                >
-                  {p.title}
-                </button>
-              );
-            })}
-          </div>
+          {choices.length > 0 && (
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold">Package:</span>
+              {choices.map((p) => {
+                const key = `${p.category}/${p.slug}`;
+                const on = p === pkg;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => reset({ key })}
+                    className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${on ? "border-ink bg-ink text-white" : "border-line text-ink/75 hover:border-ink"}`}
+                  >
+                    {p.title}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2">
               <label htmlFor="hero-date" className="label">Available dates</label>
-              <select id="hero-date" value={departureId} onChange={(e) => setDepartureId(e.target.value)} required className="field appearance-none">
+              <select
+                id="hero-date"
+                value={open ? departureId : ""}
+                onChange={(e) => setDepartureId(e.target.value)}
+                disabled={!open}
+                className="field appearance-none disabled:cursor-not-allowed disabled:bg-sand disabled:text-muted"
+              >
                 <option value="" disabled>
-                  Choose a date ({pkg.departures.length} available)
+                  {open ? "Choose a date" : "No dates available yet"}
                 </option>
-                {pkg.departures.map((d) => (
+                {pkg?.departures.map((d) => (
                   <option key={d.id} value={d.id} disabled={d.seatsLeft === 0}>
                     {d.title === pkg.title ? "" : `${d.title}: `}
                     {dateLabel(d)}
@@ -193,19 +240,21 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
               <input id="hero-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="+91 98XXX XXXXX" className="field" />
             </div>
             <div>
-              <label htmlFor="hero-email" className="label">Email</label>
-              <input id="hero-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className="field" />
+              <label htmlFor="hero-email" className="label">Email{!open && <span className="font-normal text-muted"> (optional)</span>}</label>
+              <input id="hero-email" name="email" type="email" autoComplete="email" required={open} placeholder="you@example.com" className="field" />
             </div>
             <div className="flex items-end">
               <button type="submit" disabled={sending} className="btn btn-primary w-full disabled:opacity-70">
                 {sending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
-                {sending ? "Booking…" : "Book this date"}
+                {sending ? "Sending…" : open ? "Book this date" : "Get Free Quote"}
               </button>
             </div>
           </div>
 
           <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-muted">No payment now: we confirm your seats and email the final price.</p>
+            <p className="text-muted">
+              {open ? "No payment now: we confirm your seats and email the final price." : "We'll contact you with the next available dates and today's best price."}
+            </p>
             <Link href="/custom-package" className="font-medium text-brand hover:underline">
               Different dates? Build a custom package
             </Link>

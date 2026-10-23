@@ -62,10 +62,8 @@ const steps = [
 ];
 
 export default async function HomePage() {
-  // Packages aren't listed on the home page; the booking card only offers those with open dates.
-  const bookable: BookablePackage[] = (await getPackages())
-    .filter((p) => p.departures?.length)
-    .map((p) => ({ category: p.category, slug: p.slug, title: p.title, departures: p.departures! }));
+  // Packages aren't listed on the home page; the booking card offers each package's open dates.
+  const bookable: BookablePackage[] = (await getPackages()).map((p) => ({ category: p.category, slug: p.slug, title: p.title, departures: p.departures ?? [] }));
 
   return (
     <>
