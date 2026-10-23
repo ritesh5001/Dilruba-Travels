@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { createContext, useContext, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
@@ -78,8 +79,9 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     <div className="flex min-h-full flex-1 flex-col bg-sand lg:flex-row">
       <aside className="border-b border-line bg-white print:hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-60 lg:shrink-0 lg:flex-col lg:border-b-0 lg:border-r">
         <div className="flex items-center justify-between gap-3 px-4 py-3 lg:px-5 lg:py-5">
-          <Link href="/admin" className="font-display text-lg font-semibold">
-            Dilruba <span className="text-brand">CRM</span>
+          <Link href="/admin" className="flex items-center gap-2.5 font-display text-lg font-semibold">
+            <Image src="/brand/logo-badge.webp" alt="" width={512} height={512} className="size-10 lg:size-12" />
+            <span>Dilruba <span className="text-brand">CRM</span></span>
           </Link>
           <button type="button" onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink lg:hidden">
             <LogOut className="size-4" aria-hidden /> Log out

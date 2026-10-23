@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: site.name,
     locale: "en_IN",
-    images: ["/brand/logo.png"],
+    images: ["/brand/logo-badge.png"],
   },
   alternates: { canonical: "/" },
 };
@@ -31,7 +31,7 @@ const organization = {
   name: site.legalName,
   alternateName: site.brand,
   url: site.url,
-  logo: `${site.url}/brand/logo.png`,
+  logo: `${site.url}/brand/logo-badge.png`,
   telephone: site.phone,
   email: site.email,
   address: {

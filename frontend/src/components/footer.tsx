@@ -11,9 +11,7 @@ export function Footer() {
       <div className="rounded-4xl bg-ink text-white/75 sm:rounded-5xl">
         <div className="container-x grid gap-10 py-14 sm:py-16 lg:grid-cols-[1.4fr_1fr_1fr_1.3fr]">
           <div>
-            <div className="inline-flex rounded-full bg-white px-4 py-2">
-              <Image src="/brand/logo.png" alt={site.brand} width={1200} height={320} className="h-9 w-auto" />
-            </div>
+            <Image src="/brand/logo-badge.webp" alt={site.brand} width={512} height={512} className="h-28 w-28" />
             <p className="mt-5 max-w-xs text-sm leading-relaxed">
               Umrah, Hajj and ziyarat specialists from Mahim, Mumbai, with holidays across Asia and India.
               Honest pricing, guided groups and support on WhatsApp.

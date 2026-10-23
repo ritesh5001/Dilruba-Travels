@@ -51,7 +51,7 @@ export function Header({ menu }: { menu: MenuItem[] }) {
   return (
     <header className={`sticky top-0 z-40 border-b bg-white transition-shadow ${scrolled ? "border-line shadow-md shadow-black/5" : "border-transparent"}`}>
       <div className="mx-auto flex max-w-[90rem] items-center justify-between gap-4 px-3 py-2 sm:px-5 lg:py-1.5">
-        <Logo className="h-9 w-auto sm:h-10 xl:h-11" />
+        <Logo className="h-14 w-14 sm:h-16 sm:w-16 lg:h-[4.5rem] lg:w-[4.5rem]" />
 
         <nav aria-label="Main" className="hidden lg:block">
           <ul className="flex items-stretch">
@@ -144,7 +144,7 @@ function Drawer({ menu, open, onClose, pathname }: { menu: MenuItem[]; open: boo
         }`}
       >
         <div className="flex items-start justify-between gap-3 px-5 pb-4 pt-6">
-          <Logo className="h-14 w-auto" />
+          <Logo className="h-24 w-24" />
           <button type="button" onClick={onClose} aria-label="Close menu" className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-ink">
             <X className="size-5" />
           </button>
