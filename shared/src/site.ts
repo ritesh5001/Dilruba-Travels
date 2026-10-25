@@ -11,7 +11,7 @@ export const site = {
     "Umrah and Hajj packages, Iraq, Jordan, Palestine and Turkey ziyarat tours, plus Asia and India holidays from Mahim, Mumbai. Get a free quote on WhatsApp.",
   phone: "+91 78602 57987",
   phoneHref: "tel:+917860257987",
-  whatsapp: "917860257986",
+  whatsapp: "917860257987",
   email: "Dilrubatravels1@gmail.com",
   address: {
     line1: "Shop 3A, Building No 5B, Baliga Nagar",
