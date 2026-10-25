@@ -47,7 +47,7 @@ export default async function BookPackagePage(props: PageProps<"/book/[category]
           <h2 className="text-2xl font-semibold">Traveller details</h2>
           <p className="mt-1 text-sm text-muted">Takes about a minute. We reply within one working day.</p>
           <div className="mt-6">
-            {/* The month list depends on today's date, so the form renders at request time. */}
+            {/* The form reads the referral code from the browser, so it renders on the client. */}
             <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-sand" aria-busy="true" />}>
               <BookingForm pkg={{ category: p.category, slug: p.slug, title: p.title, departures: p.departures }} />
             </Suspense>

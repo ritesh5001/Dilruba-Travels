@@ -116,6 +116,21 @@ export function HolidayIcon({ className }: IconProps) {
   );
 }
 
+/** Customize: a trip plan on a clipboard with a pen. */
+export function CustomIcon({ className }: IconProps) {
+  return (
+    <Svg className={className}>
+      <rect x="5" y="5" width="18" height="24" rx="2.5" fill={SOFT} />
+      <rect x="10" y="3" width="8" height="4.5" rx="1.5" fill={RED} />
+      <rect x="8.5" y="12" width="11" height="2" rx="1" fill={RED} />
+      <rect x="8.5" y="16.5" width="8" height="2" rx="1" fill={RED} opacity=".75" />
+      <rect x="8.5" y="21" width="6" height="2" rx="1" fill={RED} opacity=".55" />
+      <path d="m26.5 12.5 2 2-9 9-3 1 1-3z" fill={GOLD} />
+      <path d="m26.5 12.5 2 2 1-1a1.4 1.4 0 0 0-2-2z" fill={RED} />
+    </Svg>
+  );
+}
+
 export function InfoIcon({ className }: IconProps) {
   return (
     <Svg className={className}>
@@ -145,6 +160,7 @@ export const navIcons = {
   dome: DomeIcon,
   turkey: TurkeyIcon,
   holiday: HolidayIcon,
+  custom: CustomIcon,
   info: InfoIcon,
   contact: ContactIcon,
 } as const;

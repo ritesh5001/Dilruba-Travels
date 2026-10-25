@@ -13,6 +13,8 @@ type Service = (typeof services)[number];
 const tripTypes = services.filter((s) => s !== "Other");
 const hotelTypes = ["Economy / standard", "3 Star", "4 Star", "5 Star"];
 const sharingTypes = ["Quad (4 sharing)", "Triple (3 sharing)", "Double (2 sharing)", "Single"];
+const budgets = ["₹50,000 – ₹1,00,000", "₹1,00,000 – ₹2,00,000"];
+const CUSTOM_BUDGET = "Custom";
 const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 const isPilgrimage = (s: Service) => s === "Umrah" || s === "Hajj";
 
@@ -22,6 +24,7 @@ const isPilgrimage = (s: Service) => s === "Umrah" || s === "Hajj";
  */
 export function CustomPackageForm() {
   const [service, setService] = useState<Service>("Umrah");
+  const [budget, setBudget] = useState("");
   const [state, setState] = useState<{ sending?: boolean; error?: string; done?: { name: string; text: string } }>({});
   const [today] = useState(() => todayIST());
 
@@ -42,6 +45,7 @@ export function CustomPackageForm() {
       !isPilgrimage(service) && v("places") && `Places: ${v("places")}`,
       `Hotels: ${v("hotel")}`,
       `Room sharing: ${v("sharing")}`,
+      budget && `Budget per person: ${budget === CUSTOM_BUDGET ? (v("customBudget") ? `₹${v("customBudget")}` : "custom (not given)") : budget}`,
       `Flights: ${v("flights")}`,
       `Travellers: ${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}${infants ? `, ${infants} infant${infants === 1 ? "" : "s"}` : ""}`,
       v("nationality") && `Nationality: ${v("nationality")}`,
@@ -176,6 +180,20 @@ export function CustomPackageForm() {
               {sharingTypes.map((h) => <option key={h}>{h}</option>)}
             </select>
           </div>
+          <div>
+            <label htmlFor="cp-budget" className="label">Budget <span className="font-normal text-muted">(per person)</span></label>
+            <select id="cp-budget" value={budget} onChange={(e) => setBudget(e.target.value)} className="field appearance-none">
+              <option value="">Select budget</option>
+              {budgets.map((b) => <option key={b}>{b}</option>)}
+              <option value={CUSTOM_BUDGET}>Custom</option>
+            </select>
+          </div>
+          {budget === CUSTOM_BUDGET && (
+            <div>
+              <label htmlFor="cp-custom-budget" className="label">Your budget (₹ per person)</label>
+              <input id="cp-custom-budget" name="customBudget" inputMode="numeric" maxLength={20} placeholder="e.g. 2,50,000" className="field" />
+            </div>
+          )}
           <div>
             <label htmlFor="cp-nationality" className="label">Nationality</label>
             <input id="cp-nationality" name="nationality" defaultValue="Indian" className="field" />

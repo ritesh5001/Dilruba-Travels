@@ -12,8 +12,10 @@ import { WhatsAppIcon } from "./icons";
 import { navIcons } from "./nav-icons";
 
 function isActive(pathname: string, item: MenuItem) {
-  if (item.href === "/packages") return pathname === "/packages" || pathname.startsWith("/packages/asia") || pathname.startsWith("/packages/domestic");
-  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const under = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  if (item.matches?.some(under)) return true;
+  // "/packages" alone is the all-packages page; its children have their own items.
+  return item.href === "/packages" ? pathname === "/packages" : under(item.href);
 }
 
 /**
@@ -116,7 +118,7 @@ function DesktopItem({ item, active }: { item: MenuItem; active: boolean }) {
               <li key={c.href + c.label}>
                 <Link
                   href={c.href}
-                  className={`block px-4 py-2 text-sm hover:bg-sand hover:text-brand ${i === item.children!.length - 1 ? "mt-1 border-t border-line pt-2.5 font-semibold text-brand" : "text-ink"}`}
+                  className={`block px-4 py-2 text-sm hover:bg-sand hover:text-brand ${i === item.children!.length - 1 && c.label.startsWith("All ") ? "mt-1 border-t border-line pt-2.5 font-semibold text-brand" : "text-ink"}`}
                 >
                   {c.label}
                 </Link>
