@@ -9,11 +9,13 @@ import type { AdminCustomerDetail } from "@dilruba/shared/crm";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { WhatsAppIcon } from "@/components/icons";
 import { BookingBadge, Card, Empty, ErrorBox, LeadBadge, Loading, NotesPanel, PageHeader, customerWhatsapp, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: c, setData, error, reload } = useAdminData<AdminCustomerDetail>(`/customers/${id}`);
   const action = useAction();
+  const canWrite = useCan()("customers.write");
   const [saved, setSaved] = useState(false);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -83,7 +85,7 @@ export default function CustomerDetailPage() {
               </ul>
             )}
           </Card>
-          <NotesPanel notes={c.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
+          <NotesPanel readOnly={!canWrite} notes={c.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
         </div>
 
         <div className="space-y-6">
@@ -102,7 +104,7 @@ export default function CustomerDetailPage() {
               </a>
             </>
           ) : (
-            <button type="button" disabled={action.busy} onClick={() => void mutate("/referral-code", "POST", undefined)} className="btn btn-outline w-full !py-2 disabled:opacity-50">
+            canWrite && <button type="button" disabled={action.busy} onClick={() => void mutate("/referral-code", "POST", undefined)} className="btn btn-outline w-full !py-2 disabled:opacity-50">
               <Gift className="size-4" aria-hidden /> Create a referral code
             </button>
           )}
@@ -132,18 +134,18 @@ export default function CustomerDetailPage() {
           >
             <div>
               <label htmlFor="c-name" className="label">Name</label>
-              <input id="c-name" name="name" defaultValue={c.name} required className="field" />
+              <input id="c-name" name="name" defaultValue={c.name} required readOnly={!canWrite} className="field" />
             </div>
             <div>
               <label htmlFor="c-email" className="label">Email</label>
-              <input id="c-email" name="email" type="email" defaultValue={c.email ?? ""} placeholder="Needed for booking emails" className="field" />
+              <input id="c-email" name="email" type="email" defaultValue={c.email ?? ""} placeholder="Needed for booking emails" readOnly={!canWrite} className="field" />
             </div>
             <div>
               <p className="label">Phone</p>
               <p className="text-sm">{c.phone}</p>
               <p className="mt-1 text-xs text-muted">The phone number identifies the customer, so it can&apos;t be edited here.</p>
             </div>
-            <button type="submit" disabled={action.busy} className="btn btn-outline disabled:opacity-50">Save</button>
+            {canWrite && <button type="submit" disabled={action.busy} className="btn btn-outline disabled:opacity-50">Save</button>}
             {saved && <p role="status" className="text-sm text-[#0f7a3a]">Saved.</p>}
           </form>
         </Card>

@@ -8,6 +8,8 @@ import { accessToken, bookingReference, parseBody } from "../lib/util.ts";
 import { paymentProvider } from "../payments/index.ts";
 import { todayIST } from "@dilruba/shared/ops";
 import { refreshWebsite } from "../services/catalog.ts";
+import { notify } from "../services/notifications.ts";
+import { getSettings } from "../services/settings.ts";
 import { addEvent, applyReferral, balanceOf, dueNow, toPublicBooking, upsertCustomer } from "../services/crm.ts";
 
 export const bookingsRouter = Router();
@@ -95,7 +97,11 @@ bookingsRouter.post(
     void (async () => {
       await sendEmail(bookingReceivedEmail(booking, customer));
       await notifyAdmin(adminNewBookingEmail(booking, customer));
-    })();
+      await notify(
+        { roles: ["owner", "manager", "operations"] },
+        { type: "booking", title: `New booking request: ${customer.name}`, body: `${booking.package_title} · ${booking.adults + booking.children} travellers${departure ? ` · ${departure.title}` : ""}`, link: `/admin/bookings/${booking.id}` },
+      );
+    })().catch((err: unknown) => console.error("[bookings] after-booking tasks failed:", err));
 
     res.status(201).json({ ok: true, reference: booking.reference, token: booking.access_token });
   },

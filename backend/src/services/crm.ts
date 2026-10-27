@@ -1,4 +1,4 @@
-import type { PublicBooking } from "@dilruba/shared/booking";
+import { formatINR, type PublicBooking } from "@dilruba/shared/booking";
 import { todayIST, type AdminInstalment } from "@dilruba/shared/ops";
 import { randomInt } from "node:crypto";
 import { sql, type Transaction } from "kysely";
@@ -8,6 +8,7 @@ import { notifyAdmin, sendEmail } from "../email/send.ts";
 import { adminPaymentEmail, bookingStatusEmail, feedbackRequestEmail, paymentReceivedEmail } from "../email/templates.ts";
 import { normalizePhone } from "../lib/util.ts";
 import { paymentProvider } from "../payments/index.ts";
+import { notify } from "./notifications.ts";
 import { getSettings } from "./settings.ts";
 
 type Executor = typeof db | Transaction<Database>;
@@ -156,6 +157,10 @@ export async function markOnlinePaymentPaid(input: { orderId: string; paymentId:
 async function sendPaymentEmails(b: Booking, c: Customer, amount: number) {
   if (c.email) await sendEmail(paymentReceivedEmail(b, c, amount));
   await notifyAdmin(adminPaymentEmail(b, c, amount));
+  await notify(
+    { roles: ["owner", "manager", "accounts"] },
+    { type: "payment", title: `${formatINR(amount)} received online from ${c.name}`, body: `${b.reference} · ${b.package_title}`, link: `/admin/bookings/${b.id}` },
+  );
 }
 
 export async function markOnlinePaymentFailed(input: { orderId: string; provider: string }) {

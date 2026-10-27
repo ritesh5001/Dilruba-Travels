@@ -18,14 +18,16 @@ import {
   todayIST,
   visaStatuses,
   visaStatusLabels,
+  type AdminSupplier,
   type AdminTraveller,
   type DocumentKind,
   type TravellerInput,
 } from "@dilruba/shared/ops";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ApiError, adminFetch } from "@/lib/admin-api";
+import { ApiError, adminFetch, useAdminData } from "@/lib/admin-api";
 import { Card, Empty, InstalmentBadge, VisaBadge, formatDate } from "./ui";
+import { useCan } from "./shell";
 
 type Mutate = (path: string, method: string, body?: unknown, message?: string) => Promise<boolean>;
 
@@ -39,6 +41,7 @@ function tripEnd(b: AdminBookingDetail) {
 // ---------------- Travellers ----------------
 
 export function TravellersCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: boolean; mutate: Mutate }) {
+  const can = useCan();
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const missing = b.adults + b.children - b.travellers.length;
 
@@ -46,7 +49,7 @@ export function TravellersCard({ b, busy, mutate }: { b: AdminBookingDetail; bus
     <Card
       title={`Travellers (${b.travellers.length} of ${b.adults + b.children})`}
       actions={
-        editing === null && (
+        editing === null && can("travellers.write") && (
           <button type="button" onClick={() => setEditing("new")} className="inline-flex items-center gap-1.5 text-sm font-medium text-brand">
             <UserPlus className="size-4" aria-hidden /> Add traveller
           </button>
@@ -95,6 +98,10 @@ export function TravellersCard({ b, busy, mutate }: { b: AdminBookingDetail; bus
 }
 
 function TravellerRow({ t, bookingId, tripEnd, busy, mutate, onEdit }: { t: AdminTraveller; bookingId: number; tripEnd: string | null; busy: boolean; mutate: Mutate; onEdit: () => void }) {
+  const can = useCan();
+  const canEdit = can("travellers.write");
+  // Passport scans and visas only for roles with document access.
+  const canDocs = can("documents.read");
   const problem = passportProblem(t, tripEnd);
   const [kind, setKind] = useState<DocumentKind>(t.documents.some((d) => d.kind === "passport") ? "photo" : "passport");
   const [uploading, setUploading] = useState(false);
@@ -148,31 +155,38 @@ function TravellerRow({ t, bookingId, tripEnd, busy, mutate, onEdit }: { t: Admi
         </div>
         <div className="flex items-center gap-2">
           <VisaBadge status={t.visaStatus} />
-          <button type="button" onClick={onEdit} className="rounded-full p-2 text-muted hover:bg-sand hover:text-ink" aria-label={`Edit ${t.fullName}`}>
-            <Pencil className="size-4" aria-hidden />
-          </button>
+          {canEdit && (
+            <button type="button" onClick={onEdit} className="rounded-full p-2 text-muted hover:bg-sand hover:text-ink" aria-label={`Edit ${t.fullName}`}>
+              <Pencil className="size-4" aria-hidden />
+            </button>
+          )}
         </div>
       </div>
+      {!canDocs ? (
+        t.documents.length > 0 && <p className="mt-2 text-xs text-muted">{t.documents.length} document{t.documents.length === 1 ? "" : "s"} on file</p>
+      ) : (
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {t.documents.map((d) => (
           <span key={d.id} className="inline-flex items-center gap-1 rounded-full bg-sand py-1 pl-3 pr-1 text-xs">
             <a href={`/api/admin/bookings/${bookingId}/travellers/${t.id}/documents/${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium hover:text-brand">
               <FileText className="size-3.5" aria-hidden /> {documentKindLabels[d.kind]}
             </a>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                if (window.confirm(`Delete ${d.filename}?`)) void mutate(`/travellers/${t.id}/documents/${d.id}`, "DELETE", undefined, "Document deleted.");
-              }}
-              className="rounded-full p-1 text-muted hover:bg-white hover:text-brand"
-              aria-label={`Delete ${d.filename}`}
-            >
-              <Trash2 className="size-3" aria-hidden />
-            </button>
+            {canEdit && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (window.confirm(`Delete ${d.filename}?`)) void mutate(`/travellers/${t.id}/documents/${d.id}`, "DELETE", undefined, "Document deleted.");
+                }}
+                className="rounded-full p-1 text-muted hover:bg-white hover:text-brand"
+                aria-label={`Delete ${d.filename}`}
+              >
+                <Trash2 className="size-3" aria-hidden />
+              </button>
+            )}
           </span>
         ))}
-        <span className="inline-flex items-center gap-1">
+        {canEdit && <span className="inline-flex items-center gap-1">
           <label htmlFor={`doc-kind-${t.id}`} className="sr-only">Document type</label>
           <select id={`doc-kind-${t.id}`} value={kind} onChange={(e) => setKind(e.target.value as DocumentKind)} className="rounded-full border border-line bg-white px-2 py-1 text-xs">
             {documentKinds.map((k) => <option key={k} value={k}>{documentKindLabels[k]}</option>)}
@@ -191,8 +205,9 @@ function TravellerRow({ t, bookingId, tripEnd, busy, mutate, onEdit }: { t: Admi
               }}
             />
           </label>
-        </span>
+        </span>}
       </div>
+      )}
       {uploadError && <p role="alert" className="mt-2 text-xs font-medium text-brand">{uploadError}</p>}
     </li>
   );
@@ -324,6 +339,7 @@ function TravellerForm({
 type PlanRow = { label: string; dueDate: string; amount: string };
 
 export function InstalmentsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: boolean; mutate: Mutate }) {
+  const canEdit = useCan()("payments.write");
   const [editing, setEditing] = useState(false);
   const payable = b.totalAmount === null ? null : b.totalAmount + b.tcsAmount;
   const [rows, setRows] = useState<PlanRow[]>([]);
@@ -356,7 +372,7 @@ export function InstalmentsCard({ b, busy, mutate }: { b: AdminBookingDetail; bu
     <Card
       title="Payment plan"
       actions={
-        !editing && payable !== null && (
+        !editing && payable !== null && canEdit && (
           <button type="button" onClick={startEditing} className="text-sm font-medium text-brand">{b.instalments.length ? "Edit plan" : "Set up instalments"}</button>
         )
       }
@@ -414,7 +430,7 @@ export function InstalmentsCard({ b, busy, mutate }: { b: AdminBookingDetail; bu
               </div>
               <div className="flex items-center gap-2">
                 <InstalmentBadge state={i.state} />
-                {i.state !== "paid" && b.customer.email && (
+                {i.state !== "paid" && b.customer.email && canEdit && (
                   <button type="button" disabled={busy} onClick={() => void mutate(`/instalments/${i.id}/remind`, "POST", undefined, `Reminder for ${i.label} emailed.`)} className="rounded-full p-1.5 text-muted hover:bg-sand hover:text-ink" title="Email a reminder now">
                     <Bell className="size-4" aria-hidden />
                     <span className="sr-only">Email a reminder for {i.label}</span>
@@ -429,17 +445,23 @@ export function InstalmentsCard({ b, busy, mutate }: { b: AdminBookingDetail; bu
   );
 }
 
-// ---------------- Supplier costs & profit (owner) ----------------
+// ---------------- Supplier costs & profit (owner and accounts) ----------------
+
+const costTone = { paid: "bg-[#25d366]/15 text-[#0f7a3a]", part_paid: "bg-[#2563eb]/10 text-[#1d4ed8]", unpaid: "bg-amber/25 text-ink" } as const;
+const costLabel = { paid: "Paid", part_paid: "Part paid", unpaid: "Unpaid" } as const;
 
 export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: boolean; mutate: Mutate }) {
   const [adding, setAdding] = useState(false);
+  const [supplierText, setSupplierText] = useState("");
+  const { data: suppliers } = useAdminData<AdminSupplier[]>(adding ? "/suppliers?active=1" : null);
   const costs = b.costs ?? [];
   const totalCost = costs.reduce((s, c) => s + c.amount, 0);
-  const unpaid = costs.filter((c) => !c.paid).reduce((s, c) => s + c.amount, 0);
+  const unpaid = costs.reduce((s, c) => s + (c.amount - c.covered), 0);
   const margin = b.totalAmount === null ? null : b.totalAmount - totalCost;
+  const known = suppliers?.find((x) => x.name.toLowerCase() === supplierText.trim().toLowerCase());
 
   return (
-    <Card title="Costs & profit" actions={<span className="text-xs text-muted">Only you can see this</span>}>
+    <Card title="Costs & profit" actions={<span className="text-xs text-muted">Owner and accounts only</span>}>
       <div className="mb-4 grid gap-4 rounded-xl bg-sand p-4 sm:grid-cols-3">
         <div>
           <p className="text-xs text-muted">Selling price</p>
@@ -462,24 +484,31 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
           {costs.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
               <div className="min-w-0">
-                <p className="font-medium">{c.supplier}</p>
-                <p className="text-xs text-muted">{costCategoryLabels[c.category]}{c.note ? ` · ${c.note}` : ""}</p>
+                {c.supplierId ? (
+                  <Link href={`/admin/suppliers/${c.supplierId}`} className="font-medium hover:text-brand">{c.supplier}</Link>
+                ) : (
+                  <p className="font-medium">{c.supplier}</p>
+                )}
+                <p className="text-xs text-muted">
+                  {costCategoryLabels[c.category]}
+                  {c.note ? ` · ${c.note}` : ""}
+                  {c.state === "part_paid" ? ` · ${formatINR(c.covered)} paid` : ""}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <span className="font-semibold">{formatINR(c.amount)}</span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${costTone[c.state]}`}>
+                  {c.state === "paid" && <Check className="size-3" aria-hidden />} {costLabel[c.state]}
+                </span>
+                {c.state !== "paid" && c.supplierId && (
+                  <Link href={`/admin/suppliers/${c.supplierId}?pay=${(c.amount - c.covered) / 100}`} className="text-xs font-medium text-brand hover:underline">
+                    Pay
+                  </Link>
+                )}
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => void mutate(`/costs/${c.id}`, "PATCH", { paid: !c.paid })}
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${c.paid ? "bg-[#25d366]/15 text-[#0f7a3a]" : "bg-amber/25 text-ink"}`}
-                  title={c.paid ? "Paid to supplier (click to undo)" : "Not paid yet (click when paid)"}
-                >
-                  {c.paid && <Check className="size-3" aria-hidden />} {c.paid ? "Paid" : "Unpaid"}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => { if (window.confirm(`Delete ${c.supplier}?`)) void mutate(`/costs/${c.id}`, "DELETE"); }}
+                  onClick={() => { if (window.confirm(`Remove the ${formatINR(c.amount)} cost from ${c.supplier}?`)) void mutate(`/costs/${c.id}`, "DELETE", undefined, "Cost removed."); }}
                   className="rounded-full p-1.5 text-muted hover:bg-sand hover:text-brand"
                   aria-label={`Delete cost ${c.supplier}`}
                 >
@@ -495,8 +524,21 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
           onSubmit={async (e) => {
             e.preventDefault();
             const f = new FormData(e.currentTarget);
-            const ok = await mutate("/costs", "POST", { category: f.get("category"), supplier: f.get("supplier"), amount: Number(f.get("amount")), paid: f.get("paid") === "on", note: f.get("note") }, "Cost added.");
-            if (ok) setAdding(false);
+            const ok = await mutate(
+              "/costs",
+              "POST",
+              {
+                category: f.get("category"),
+                ...(known ? { supplierId: known.id } : { supplierName: supplierText.trim() }),
+                amount: Number(f.get("amount")),
+                note: f.get("note"),
+              },
+              "Cost added.",
+            );
+            if (ok) {
+              setAdding(false);
+              setSupplierText("");
+            }
           }}
           className="mt-4 grid gap-3 rounded-xl border border-line p-4 sm:grid-cols-2"
         >
@@ -508,7 +550,22 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
           </div>
           <div>
             <label htmlFor="cost-supplier" className="label">Supplier</label>
-            <input id="cost-supplier" name="supplier" required placeholder="e.g. Saudia, Hilton Makkah" className="field" />
+            <input
+              id="cost-supplier"
+              list="cost-supplier-list"
+              value={supplierText}
+              onChange={(e) => setSupplierText(e.target.value)}
+              required
+              autoComplete="off"
+              placeholder="Start typing, e.g. Saudia, Hilton Makkah"
+              className="field"
+            />
+            <datalist id="cost-supplier-list">
+              {suppliers?.map((x) => <option key={x.id} value={x.name} />)}
+            </datalist>
+            {supplierText.trim() && suppliers && (
+              <p className="mt-1 text-xs text-muted">{known ? `Existing supplier · ${formatINR(known.owed)} owed` : "New supplier: it will be added to your supplier list"}</p>
+            )}
           </div>
           <div>
             <label htmlFor="cost-amount" className="label">Amount (₹)</label>
@@ -518,11 +575,9 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
             <label htmlFor="cost-note" className="label">Note <span className="font-normal text-muted">(optional)</span></label>
             <input id="cost-note" name="note" placeholder="Invoice no., PNR…" className="field" />
           </div>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input type="checkbox" name="paid" className="size-4 accent-[var(--color-brand)]" /> Already paid to the supplier
-          </label>
+          <p className="text-xs text-muted sm:col-span-2">Record what you pay the supplier on their page (Suppliers). Payments clear their oldest costs first.</p>
           <div className="flex gap-2 sm:col-span-2">
-            <button type="submit" disabled={busy} className="btn btn-primary !py-2 disabled:opacity-50">Add cost</button>
+            <button type="submit" disabled={busy || !supplierText.trim()} className="btn btn-primary !py-2 disabled:opacity-50">Add cost</button>
             <button type="button" onClick={() => setAdding(false)} className="btn btn-outline !py-2">Cancel</button>
           </div>
         </form>
@@ -536,6 +591,7 @@ export function CostsCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: bo
 // ---------------- Feedback ----------------
 
 export function FeedbackCard({ b, busy, mutate }: { b: AdminBookingDetail; busy: boolean; mutate: Mutate }) {
+  const can = useCan();
   const router = useRouter();
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -556,7 +612,8 @@ export function FeedbackCard({ b, busy, mutate }: { b: AdminBookingDetail; busy:
           <Link href="/admin/reviews" className="btn btn-outline mt-3 w-full !py-2">View on the Reviews page</Link>
         ) : (
           b.feedback.comment &&
-          b.feedback.canPublish && (
+          b.feedback.canPublish &&
+          can("catalog.write") && (
             <button
               type="button"
               disabled={busy || publishing}
@@ -585,7 +642,7 @@ export function FeedbackCard({ b, busy, mutate }: { b: AdminBookingDetail; busy:
   return (
     <Card title="Customer feedback">
       <p className="text-sm text-muted">No rating yet. Happy customers are asked for a Google review; unhappy ones come straight to you.</p>
-      {b.customer.email && (
+      {b.customer.email && can("bookings.write") && (
         <button type="button" disabled={busy} onClick={() => void mutate("/feedback-request", "POST", undefined, "Feedback request emailed.")} className="btn btn-outline mt-3 w-full !py-2 disabled:opacity-50">
           Email the feedback request
         </button>

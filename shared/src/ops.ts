@@ -7,12 +7,61 @@ import { categorySlugs, type CategorySlug } from "./catalog.ts";
 
 // ---------------- Choices ----------------
 
-export const staffRoles = ["owner", "staff"] as const;
+export const staffRoles = ["owner", "manager", "sales", "operations", "accounts", "viewer"] as const;
 export type StaffRole = (typeof staffRoles)[number];
-export const staffRoleLabels: Record<StaffRole, string> = {
-  owner: "Owner (everything, incl. reports, costs, staff & settings)",
-  staff: "Staff (leads, bookings, travellers, packages)",
+export const staffRoleNames: Record<StaffRole, string> = {
+  owner: "Owner",
+  manager: "Manager",
+  sales: "Sales",
+  operations: "Operations",
+  accounts: "Accounts",
+  viewer: "Viewer",
 };
+export const staffRoleLabels: Record<StaffRole, string> = {
+  owner: "Owner: everything, incl. staff, settings and supplier costs",
+  manager: "Manager: all leads, quotes, bookings, payments, packages and reports",
+  sales: "Sales: only their assigned leads, their quotes and customers",
+  operations: "Operations: bookings, travellers, passports and departures",
+  accounts: "Accounts: payments, supplier costs, suppliers and reports",
+  viewer: "Viewer: read-only leads, customers and bookings",
+};
+
+/**
+ * What each role may do. Checked by the server on every request (the admin panel also hides
+ * what someone can't use, but that's only for tidiness).
+ */
+export const permissions = [
+  "leads.read", // see leads and quotes
+  "leads.all", // …all of them, not just the ones assigned to you
+  "leads.write", // add, update and convert leads
+  "quotes.write",
+  "customers.read",
+  "customers.write",
+  "bookings.read",
+  "bookings.write", // status, dates, travellers count, group date
+  "payments.write", // prices, payments, instalments, invoices
+  "travellers.write",
+  "documents.read", // passports and visas, manifests
+  "catalog.write", // packages, photos, departures, reviews
+  "costs", // supplier costs, suppliers and supplier payments
+  "reports", // reports, exports and campaigns
+  "staff",
+  "settings",
+] as const;
+export type Permission = (typeof permissions)[number];
+
+export const rolePermissions: Record<StaffRole, readonly Permission[]> = {
+  owner: permissions,
+  manager: permissions.filter((p) => p !== "staff" && p !== "settings" && p !== "costs"),
+  sales: ["leads.read", "leads.write", "quotes.write", "customers.read", "customers.write", "bookings.read"],
+  operations: ["customers.read", "bookings.read", "bookings.write", "travellers.write", "documents.read", "catalog.write"],
+  accounts: ["customers.read", "bookings.read", "payments.write", "costs", "reports"],
+  viewer: ["leads.read", "leads.all", "customers.read", "bookings.read"],
+};
+
+export function can(role: StaffRole | undefined | null, permission: Permission) {
+  return !!role && (rolePermissions[role] ?? []).includes(permission);
+}
 
 export const visaStatuses = ["not_started", "documents_pending", "submitted", "approved", "rejected"] as const;
 export type VisaStatus = (typeof visaStatuses)[number];
@@ -243,15 +292,115 @@ export const instalmentPlanSchema = z.object({
     .max(12, "Up to 12 instalments"),
 });
 
-export type AdminCost = { id: number; category: CostCategory; supplier: string; amount: number; paid: boolean; note: string | null; createdAt: string };
+export type CostState = "paid" | "part_paid" | "unpaid";
 
-export const costInputSchema = z.object({
-  category: z.enum(costCategories),
-  supplier: z.string().trim().min(1, "Who is it paid to?").max(120),
-  amount: rupees.refine((n) => n > 0, "Enter the cost"),
-  paid: z.boolean().default(false),
+export type AdminCost = {
+  id: number;
+  category: CostCategory;
+  supplierId: number | null;
+  supplier: string;
+  amount: number;
+  /** How much of this cost the supplier's payments cover (paid oldest cost first). */
+  covered: number;
+  state: CostState;
+  note: string | null;
+  createdAt: string;
+};
+
+/** A cost on a booking: an existing supplier, or a new one created by name. Amount in rupees. */
+export const costInputSchema = z
+  .object({
+    category: z.enum(costCategories),
+    supplierId: z.coerce.number().int().positive().optional(),
+    supplierName: z.string().trim().max(120).optional(),
+    amount: rupees.refine((n) => n > 0, "Enter the cost"),
+    note: optionalText(300),
+  })
+  .refine((d) => d.supplierId || d.supplierName, { message: "Choose the supplier", path: ["supplierId"] });
+
+// ---------------- Suppliers ----------------
+
+export const supplierTypes = ["airline", "hotel", "visa", "transport", "ground", "insurance", "other"] as const;
+export type SupplierType = (typeof supplierTypes)[number];
+export const supplierTypeLabels: Record<SupplierType, string> = {
+  airline: "Airline / tickets",
+  hotel: "Hotel",
+  visa: "Visa agent",
+  transport: "Transport",
+  ground: "Ground handler / ziyarat",
+  insurance: "Insurance",
+  other: "Other",
+};
+
+/** The supplier type a new supplier gets from the kind of cost it was first used for. */
+export const supplierTypeForCost: Record<CostCategory, SupplierType> = {
+  flight: "airline",
+  hotel: "hotel",
+  visa: "visa",
+  transport: "transport",
+  food: "ground",
+  guide: "ground",
+  insurance: "insurance",
+  other: "other",
+};
+
+export type AdminSupplier = {
+  id: number;
+  name: string;
+  type: SupplierType;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  active: boolean;
+  /** All costs booked with this supplier, what we've paid them, and what we still owe (paise). */
+  totalCosts: number;
+  totalPaid: number;
+  owed: number;
+  costCount: number;
+};
+
+export type SupplierPayment = {
+  id: number;
+  amount: number;
+  paidOn: string;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  voidedAt: string | null;
+  voidReason: string | null;
+};
+
+export type AdminSupplierDetail = AdminSupplier & {
+  costs: (AdminCost & { bookingId: number; reference: string; customerName: string; packageTitle: string })[];
+  payments: SupplierPayment[];
+};
+
+export const supplierInputSchema = z.object({
+  name: z.string().trim().min(2, "Enter the supplier's name").max(120),
+  type: z.enum(supplierTypes),
+  contactPerson: optionalText(120),
+  phone: optionalText(30),
+  email: z.union([z.email("Enter a valid email").trim().max(160), z.literal("")]).optional().transform((v) => v || null),
+  notes: optionalText(1000),
+  active: z.boolean().default(true),
+});
+
+/** Money paid to a supplier. Amount in rupees. */
+export const supplierPaymentSchema = z.object({
+  amount: rupees.refine((n) => n > 0, "Enter the amount paid"),
+  paidOn: isoDate,
+  method: optionalText(40),
+  reference: optionalText(120),
   note: optionalText(300),
 });
+
+// ---------------- Notifications ----------------
+
+export type AdminNotification = { id: number; type: string; title: string; body: string | null; link: string | null; read: boolean; createdAt: string };
+export type NotificationFeed = { items: AdminNotification[]; unread: number };
 
 // ---------------- Quotes ----------------
 
@@ -387,6 +536,10 @@ export const settingsSchema = z.object({
   dailyDigest: z.boolean(),
   /** Email the feedback request when a booking is marked completed. */
   feedbackRequests: z.boolean(),
+  /** Give each new website lead to a sales person (the one with the fewest open leads). */
+  autoAssignLeads: z.boolean(),
+  /** Thank the customer by email as soon as they enquire. */
+  autoAcknowledge: z.boolean(),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -405,6 +558,8 @@ export const defaultSettings: Settings = {
   instalmentReminders: true,
   dailyDigest: true,
   feedbackRequests: true,
+  autoAssignLeads: true,
+  autoAcknowledge: true,
 };
 
 // ---------------- Invoices ----------------
@@ -476,3 +631,6 @@ export type AudienceRow = {
   totalPaid: number;
   referralCode: string | null;
 };
+
+/** Which outside services are connected (keys live on the server; only on/off is shown). */
+export type IntegrationStatus = { email: boolean; onlinePayments: boolean };

@@ -3,6 +3,7 @@ import { quoteTotal, todayIST, type PublicQuote, type QuoteStatus } from "@dilru
 import { db } from "../db/index.ts";
 import type { Customer, Quote } from "../db/schema.ts";
 import { notifyAdmin } from "../email/send.ts";
+import { leadOwner, notify } from "./notifications.ts";
 import { adminQuoteResponseEmail, bookingLink } from "../email/templates.ts";
 import { accessToken, bookingReference } from "../lib/util.ts";
 import { addEvent } from "./crm.ts";
@@ -87,6 +88,9 @@ export async function acceptQuote(quoteId: number, by: { staff?: string }) {
   if (result.created && !by.staff) {
     const c = await db.selectFrom("customers").selectAll().where("id", "=", result.quote.customer_id).executeTakeFirstOrThrow();
     void notifyAdmin(adminQuoteResponseEmail(result.quote, c, true, result.bookingId));
+    void leadOwner(result.quote.lead_id).then((to) =>
+      notify(to, { type: "quote", title: `Quote accepted by ${c.name}`, body: `${result.quote.reference} · ${result.quote.title}`, link: `/admin/bookings/${result.bookingId}` }),
+    );
   }
   return result.bookingId;
 }

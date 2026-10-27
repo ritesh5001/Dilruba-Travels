@@ -15,7 +15,9 @@ import {
 import { Router, type Response } from "express";
 import { sql } from "kysely";
 import { db } from "../../db/index.ts";
-import { requireOwner } from "../../lib/auth.ts";
+import { requirePermission } from "../../lib/auth.ts";
+
+const requireReports = requirePermission("reports");
 import { parseId } from "../../lib/util.ts";
 
 export const reportsRouter = Router();
@@ -30,7 +32,7 @@ function range(query: Record<string, unknown>) {
   return { from, to, start: sql<Date>`(${from}::date)::timestamp at time zone 'Asia/Kolkata'`, end: sql<Date>`(${to}::date + 1)::timestamp at time zone 'Asia/Kolkata'` };
 }
 
-reportsRouter.get("/", requireOwner, async (req, res) => {
+reportsRouter.get("/", requireReports, async (req, res) => {
   const { from, to, start, end } = range(req.query);
   // "Package: Economy Umrah" and "Popup · /packages" group as "Package" and "Popup".
   const sourceGroup = sql<string>`coalesce(nullif(trim(split_part(split_part(coalesce(leads.source, ''), ':', 1), '·', 1)), ''), 'Unknown')`;
@@ -227,7 +229,7 @@ async function audience(query: Record<string, unknown>): Promise<AudienceRow[]> 
   }));
 }
 
-reportsRouter.get("/audience", requireOwner, async (req, res) => {
+reportsRouter.get("/audience", requireReports, async (req, res) => {
   res.json(await audience(req.query));
 });
 
@@ -251,7 +253,7 @@ function csv(res: Response, filename: string, header: string[], rows: unknown[][
 const rupees = (paise: number | null) => (paise === null ? "" : (paise / 100).toFixed(2));
 const ist = (d: Date | null) => (d ? d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "");
 
-reportsRouter.get("/export/leads.csv", requireOwner, async (_req, res) => {
+reportsRouter.get("/export/leads.csv", requireReports, async (_req, res) => {
   const rows = await db
     .selectFrom("leads")
     .innerJoin("customers", "customers.id", "leads.customer_id")
@@ -268,7 +270,7 @@ reportsRouter.get("/export/leads.csv", requireOwner, async (_req, res) => {
   );
 });
 
-reportsRouter.get("/export/bookings.csv", requireOwner, async (_req, res) => {
+reportsRouter.get("/export/bookings.csv", requireReports, async (_req, res) => {
   const rows = await db
     .selectFrom("bookings")
     .innerJoin("customers", "customers.id", "bookings.customer_id")
@@ -308,7 +310,7 @@ reportsRouter.get("/export/bookings.csv", requireOwner, async (_req, res) => {
   );
 });
 
-reportsRouter.get("/export/payments.csv", requireOwner, async (_req, res) => {
+reportsRouter.get("/export/payments.csv", requireReports, async (_req, res) => {
   const rows = await db
     .selectFrom("payments")
     .innerJoin("bookings", "bookings.id", "payments.booking_id")
@@ -335,7 +337,7 @@ reportsRouter.get("/export/payments.csv", requireOwner, async (_req, res) => {
   );
 });
 
-reportsRouter.get("/export/customers.csv", requireOwner, async (req, res) => {
+reportsRouter.get("/export/customers.csv", requireReports, async (req, res) => {
   const rows = await audience({ ...req.query, segment: typeof req.query.segment === "string" ? req.query.segment : "all" });
   csv(
     res,
@@ -346,7 +348,7 @@ reportsRouter.get("/export/customers.csv", requireOwner, async (req, res) => {
 });
 
 /** Passenger manifest for one departure (staff need it for visas, hotels and buses). */
-reportsRouter.get("/export/manifest.csv", async (req, res) => {
+reportsRouter.get("/export/manifest.csv", requirePermission("documents.read"), async (req, res) => {
   const departureId = parseId(req.query.departure);
   if (!departureId) return void res.status(400).json({ ok: false, error: "Choose a departure" });
   const departure = await db.selectFrom("departures").select(["title", "start_date", "end_date"]).where("id", "=", departureId).executeTakeFirst();

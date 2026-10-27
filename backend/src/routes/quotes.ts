@@ -6,6 +6,7 @@ import { adminQuoteResponseEmail, bookingLink } from "../email/templates.ts";
 import { rateLimit, safeEqual } from "../lib/auth.ts";
 import { parseBody } from "../lib/util.ts";
 import { addEvent } from "../services/crm.ts";
+import { leadOwner, notify } from "../services/notifications.ts";
 import { acceptQuote, effectiveStatus, toPublicQuote } from "../services/quotes.ts";
 
 // The customer's quote page: view a quote from its secret link and accept or decline it.
@@ -52,5 +53,8 @@ quotesPublicRouter.post("/:reference/decline", limiter, async (req, res) => {
   if (q.lead_id) await addEvent(db, { lead_id: q.lead_id, body: `Customer declined quote ${q.reference} online${data.reason ? `: "${data.reason}"` : "."}` });
   const c = await db.selectFrom("customers").selectAll().where("id", "=", q.customer_id).executeTakeFirstOrThrow();
   void notifyAdmin(adminQuoteResponseEmail(q, c, false, null));
+  void leadOwner(q.lead_id).then((to) =>
+    notify(to, { type: "quote", title: `Quote declined by ${c.name}`, body: `${q.reference} · ${q.title}${data.reason ? ` · "${data.reason}"` : ""}`, link: q.lead_id ? `/admin/leads/${q.lead_id}` : "/admin/quotes" }),
+  );
   res.json({ ok: true });
 });

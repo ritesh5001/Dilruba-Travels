@@ -2,13 +2,18 @@ import { documentKinds, travellerInputSchema, visaStatusLabels } from "@dilruba/
 import express, { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
-import { currentUser } from "../../lib/auth.ts";
+import { currentUser, requirePermission } from "../../lib/auth.ts";
 import { parseBody, parseId } from "../../lib/util.ts";
 import { addEvent } from "../../services/crm.ts";
 import { respondWithBooking } from "./bookings.ts";
 
 // Mounted at /bookings/:id/travellers, so every route here belongs to one booking.
 export const travellersRouter = Router({ mergeParams: true });
+
+// Passport scans and visas: only roles with document access may open, add or delete them.
+// Editing traveller details needs the travellers permission. (Paths are relative to here.)
+travellersRouter.use("/:tid/documents", requirePermission("documents.read"));
+travellersRouter.use((req, res, next) => (req.method === "GET" ? next() : requirePermission("travellers.write")(req, res, next)));
 
 function columns(t: z.output<typeof travellerInputSchema>) {
   return {

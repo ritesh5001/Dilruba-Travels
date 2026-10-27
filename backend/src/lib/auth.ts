@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import type { Me } from "@dilruba/shared/ops";
+import { can, type Me, type Permission } from "@dilruba/shared/ops";
 import type { NextFunction, Request, Response } from "express";
 import { config } from "../config.ts";
 import { db } from "../db/index.ts";
@@ -109,14 +109,31 @@ export async function requireAdmin(req: Request, res: Response, next: NextFuncti
   next();
 }
 
-/** Reports, costs, staff and settings: owners only. */
-export function requireOwner(_req: Request, res: Response, next: NextFunction) {
-  if (currentUser(res).role !== "owner") {
-    res.status(403).json({ ok: false, error: "Only the owner can do this" });
-    return;
-  }
-  next();
+/** Whether the logged-in person's role includes a permission. */
+export function userCan(res: Response, permission: Permission) {
+  return can(currentUser(res).role, permission);
 }
+
+/** Lets the request through if the person has any of the permissions; 403 otherwise. */
+export function requirePermission(...needed: Permission[]) {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (!needed.some((p) => userCan(res, p))) {
+      res.status(403).json({ ok: false, error: "Your role doesn't allow this. Ask the owner if you need access." });
+      return;
+    }
+    next();
+  };
+}
+
+/** Reads need `read`, anything that changes data needs `write`. */
+export function guard({ read, write }: { read: Permission | Permission[]; write: Permission | Permission[] }) {
+  const reads = requirePermission(...[read].flat());
+  const writes = requirePermission(...[write].flat());
+  return (req: Request, res: Response, next: NextFunction) => (req.method === "GET" || req.method === "HEAD" ? reads : writes)(req, res, next);
+}
+
+/** Staff and settings: owners only. */
+export const requireOwner = requirePermission("staff");
 
 /** Small in-memory fixed-window limiter; enough for one server instance. */
 export function rateLimit({ windowMs, max, message }: { windowMs: number; max: number; message: string }) {

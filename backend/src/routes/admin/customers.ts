@@ -2,18 +2,33 @@ import type { AdminCustomer, AdminCustomerDetail, Paged } from "@dilruba/shared/
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
-import { currentUser } from "../../lib/auth.ts";
+import { currentUser, userCan } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { ensureReferralCode } from "../../services/crm.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminNote } from "./mappers.ts";
 
 export const customersRouter = Router();
 
+/** Sales see only the customers behind their own leads; other roles see everyone. */
+const salesOnly = (res: import("express").Response) => userCan(res, "leads.read") && !userCan(res, "leads.all");
+
+customersRouter.param("id", async (req, res, next, value) => {
+  if (!salesOnly(res)) return next();
+  const id = parseId(value);
+  const mine = id && (await db.selectFrom("leads").select("id").where("customer_id", "=", id).where("assigned_to", "=", currentUser(res).id).executeTakeFirst());
+  if (!mine) return void res.status(404).json({ ok: false, error: "Customer not found" });
+  next();
+});
+
 customersRouter.get("/", async (req, res) => {
   const page = pageParam(req.query.page);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
 
   let query = db.selectFrom("customers");
+  if (salesOnly(res)) {
+    const me = currentUser(res).id;
+    query = query.where((eb) => eb.exists(eb.selectFrom("leads").select("leads.id").whereRef("leads.customer_id", "=", "customers.id").where("leads.assigned_to", "=", me)));
+  }
   if (q) {
     const pattern = likePattern(q);
     query = query.where((eb) => eb.or([eb("name", "ilike", pattern), eb("phone", "ilike", pattern), eb("email", "ilike", pattern)]));

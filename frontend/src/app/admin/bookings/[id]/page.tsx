@@ -19,6 +19,7 @@ import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { bookingTemplates } from "@/lib/whatsapp-templates";
 import { CostsCard, FeedbackCard, InstalmentsCard, TravellersCard } from "@/components/admin/booking-sections";
 import { BookingBadge, Card, Empty, ErrorBox, Field, Loading, NotesPanel, PageHeader, WhatsAppTemplates, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 const rupees = (paise: number | null) => (paise === null ? "" : String(paise / 100));
 
@@ -26,6 +27,7 @@ export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: b, setData, error, reload } = useAdminData<AdminBookingDetail>(`/bookings/${id}`);
   const action = useAction();
+  const can = useCan();
   const [flash, setFlash] = useState<string | null>(null);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -64,7 +66,7 @@ export default function BookingDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
         <div className="space-y-6">
-          <PricingCard key={`${b.tcsAmount}-${b.departure?.id}`} b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Price saved.")} />
+          {(can("payments.write") || can("bookings.write")) && <PricingCard key={`${b.tcsAmount}-${b.departure?.id}`} b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Price saved.")} />}
 
           <Card title="Payments">
             <div className="mb-4 grid gap-4 rounded-xl bg-sand p-4 sm:grid-cols-4">
@@ -102,17 +104,21 @@ export default function BookingDetailPage() {
                 </table>
               </div>
             )}
-            <RecordPayment busy={action.busy} onSave={(body) => mutate("/payments", "POST", body, "Payment recorded.")} />
+            {can("payments.write") && <RecordPayment busy={action.busy} onSave={(body) => mutate("/payments", "POST", body, "Payment recorded.")} />}
           </Card>
 
           <InstalmentsCard key={`plan-${b.instalments.map((i) => i.id).join()}`} b={b} busy={action.busy} mutate={mutate} />
           <TravellersCard b={b} busy={action.busy} mutate={mutate} />
           {b.costs && <CostsCard b={b} busy={action.busy} mutate={mutate} />}
-          <NotesPanel notes={b.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
+          <NotesPanel
+            readOnly={!can("bookings.write") && !can("payments.write") && !can("travellers.write")}
+            notes={b.notes}
+            onAdd={(body) => mutate("/notes", "POST", { body })}
+          />
         </div>
 
         <div className="space-y-6">
-          <Card title="Payment request">
+          {can("payments.write") && <Card title="Payment request">
             {b.totalAmount === null ? (
               <p className="text-sm text-muted">Set the total price first. Then email the customer their price and payment link.</p>
             ) : b.status === "cancelled" || b.status === "completed" ? (
@@ -138,9 +144,15 @@ export default function BookingDetailPage() {
               </>
             )}
             <CopyLink link={b.customerLink} />
-          </Card>
+          </Card>}
+          {!can("payments.write") && (
+            <Card title="Customer's booking page">
+              <p className="text-sm text-muted">Where the customer sees their booking and pays.</p>
+              <CopyLink link={b.customerLink} />
+            </Card>
+          )}
 
-          <StatusCard key={b.status} b={b} busy={action.busy} onSave={(status, notifyCustomer) => mutate("", "PATCH", { status, notifyCustomer }, "Status updated.")} />
+          {can("bookings.write") && <StatusCard key={b.status} b={b} busy={action.busy} onSave={(status, notifyCustomer) => mutate("", "PATCH", { status, notifyCustomer }, "Status updated.")} />}
           <FeedbackCard b={b} busy={action.busy} mutate={mutate} />
 
           <Card title="Trip">

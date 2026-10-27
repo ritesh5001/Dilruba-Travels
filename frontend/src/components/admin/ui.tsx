@@ -254,12 +254,13 @@ export function Pagination({ page, pageSize, total }: { page: number; pageSize: 
 }
 
 /** Timeline of staff notes and automatic events, with a box to add a note. */
-export function NotesPanel({ notes, onAdd }: { notes: AdminNote[]; onAdd: (body: string) => Promise<boolean> }) {
+export function NotesPanel({ notes, onAdd, readOnly }: { notes: AdminNote[]; onAdd: (body: string) => Promise<boolean>; readOnly?: boolean }) {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
   return (
     <Card title="Notes & activity">
-      <form
+      {!readOnly && (
+        <form
         onSubmit={async (e) => {
           e.preventDefault();
           if (!body.trim()) return;
@@ -275,6 +276,7 @@ export function NotesPanel({ notes, onAdd }: { notes: AdminNote[]; onAdd: (body:
           {saving && <Loader2 className="size-4 animate-spin" aria-hidden />} Add note
         </button>
       </form>
+      )}
       {notes.length === 0 ? (
         <Empty>No notes yet.</Empty>
       ) : (

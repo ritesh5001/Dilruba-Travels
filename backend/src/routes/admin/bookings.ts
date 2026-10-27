@@ -1,6 +1,6 @@
 import { bookingStatuses, bookingStatusLabels, formatINR, formatTravelMonth, paymentMethodLabels, paymentMethods, type PaymentMethod } from "@dilruba/shared/booking";
 import type { AdminBooking, AdminBookingDetail, Paged } from "@dilruba/shared/crm";
-import { costInputSchema, financialYear, formatDay, instalmentPlanSchema, splitGst, todayIST, type InvoiceData } from "@dilruba/shared/ops";
+import { costInputSchema, financialYear, formatDay, instalmentPlanSchema, splitGst, supplierTypeForCost, todayIST, type InvoiceData } from "@dilruba/shared/ops";
 import { site } from "@dilruba/shared/site";
 import { Router, type Response } from "express";
 import { sql } from "kysely";
@@ -8,11 +8,12 @@ import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { sendEmail } from "../../email/send.ts";
 import { bookingLink, feedbackLink, instalmentReminderEmail, paymentRequestEmail } from "../../email/templates.ts";
-import { currentUser, requireOwner } from "../../lib/auth.ts";
+import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { paymentProvider } from "../../payments/index.ts";
 import { addEvent, balanceOf, dueNow, instalmentStates, payable, recordManualPayment, sendFeedbackRequest, sendStatusEmail } from "../../services/crm.ts";
 import { getSettings, tcsFor } from "../../services/settings.ts";
+import { findOrCreateSupplier, supplierLedger } from "../../services/suppliers.ts";
 import { bookingsQuery, documentsFor, toAdminBooking, toAdminCost, toAdminNote, toAdminPayment, toAdminTraveller } from "./mappers.ts";
 import { travellersRouter } from "./travellers.ts";
 
@@ -47,7 +48,13 @@ bookingsAdminRouter.get("/", async (req, res) => {
   res.json(body);
 });
 
-async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDetail | null> {
+// Who may do what on a booking (viewing is checked where the router is mounted).
+const canEditTrip = requirePermission("bookings.write");
+const canTakePayments = requirePermission("payments.write");
+const canWriteNotes = requirePermission("bookings.write", "payments.write", "travellers.write");
+const canManageCosts = requirePermission("costs");
+
+async function loadBooking(id: number, showCosts: boolean): Promise<AdminBookingDetail | null> {
   const row = await bookingsQuery().where("bookings.id", "=", id).executeTakeFirst();
   if (!row) return null;
   const [payments, notes, travellers, instalments, costs, feedback, quote, settings] = await Promise.all([
@@ -55,7 +62,16 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
     db.selectFrom("notes").selectAll().where("booking_id", "=", id).orderBy("created_at", "desc").execute(),
     db.selectFrom("travellers").selectAll().where("booking_id", "=", id).orderBy("id").execute(),
     db.selectFrom("instalments").selectAll().where("booking_id", "=", id).execute(),
-    isOwner ? db.selectFrom("booking_costs").selectAll().where("booking_id", "=", id).orderBy("id").execute() : Promise.resolve(null),
+    showCosts
+      ? db
+          .selectFrom("booking_costs")
+          .leftJoin("suppliers", "suppliers.id", "booking_costs.supplier_id")
+          .selectAll("booking_costs")
+          .select("suppliers.name as supplier_name")
+          .where("booking_costs.booking_id", "=", id)
+          .orderBy("booking_costs.id")
+          .execute()
+      : Promise.resolve(null),
     db
       .selectFrom("feedback")
       .leftJoin("reviews", "reviews.feedback_id", "feedback.id")
@@ -65,7 +81,10 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
     db.selectFrom("quotes").select("id").where("booking_id", "=", id).executeTakeFirst(),
     getSettings(),
   ]);
-  const docs = await documentsFor(travellers.map((t) => t.id));
+  const [docs, ledger] = await Promise.all([
+    documentsFor(travellers.map((t) => t.id)),
+    supplierLedger((costs ?? []).flatMap((c) => (c.supplier_id ? [c.supplier_id] : []))),
+  ]);
   return {
     ...toAdminBooking(row),
     packageCategory: row.package_category,
@@ -79,7 +98,7 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
     notes: notes.map(toAdminNote),
     travellers: travellers.map((t) => toAdminTraveller(t, docs.get(t.id))),
     instalments: instalmentStates(instalments, row.amount_paid),
-    costs: costs?.map(toAdminCost) ?? null,
+    costs: costs?.map((c) => toAdminCost(c, ledger.costs.get(c.id))) ?? null,
     invoiceNumber: row.invoice_number,
     suggestedTcs: tcsFor(settings, row.package_category, row.total_amount),
     feedback: feedback
@@ -91,7 +110,7 @@ async function loadBooking(id: number, isOwner: boolean): Promise<AdminBookingDe
 }
 
 export async function respondWithBooking(res: Response, id: number) {
-  const booking = await loadBooking(id, currentUser(res).role === "owner");
+  const booking = await loadBooking(id, userCan(res, "costs"));
   if (!booking) res.status(404).json({ ok: false, error: "Booking not found" });
   else res.json(booking);
 }
@@ -142,13 +161,28 @@ async function seatsLeft(departureId: number, exceptBookingId: number) {
   return d ? { ...d, left: d.seats - Number(d.booked ?? 0) } : null;
 }
 
-bookingsAdminRouter.patch("/:id", async (req, res) => {
+bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.write"), async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(updateSchema, req.body, res);
   if (!id || !data) return;
   const me = currentUser(res);
   const before = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();
   if (!before) return void res.status(404).json({ ok: false, error: "Booking not found" });
+
+  // The price form also sends the trip details, so check what actually changes: prices need
+  // the payments permission, everything else the bookings permission.
+  const changed = <T,>(next: T | undefined, current: T) => next !== undefined && next !== current;
+  const priceChanged =
+    changed(toPaise(data.totalAmount), before.total_amount) || changed(toPaise(data.depositAmount), before.deposit_amount) || changed(toPaise(data.tcsAmount), before.tcs_amount);
+  const tripChanged =
+    changed(data.status, before.status) ||
+    changed(data.packageTitle, before.package_title) ||
+    changed(data.travelMonth, before.travel_month) ||
+    changed(data.adults, before.adults) ||
+    changed(data.children, before.children) ||
+    changed(data.departureId, before.departure_id);
+  if (priceChanged && !userCan(res, "payments.write")) return void res.status(403).json({ ok: false, error: "Only accounts or a manager can change prices" });
+  if (tripChanged && !userCan(res, "bookings.write")) return void res.status(403).json({ ok: false, error: "Only operations or a manager can change the trip details or status" });
 
   const total = data.totalAmount === undefined ? before.total_amount : toPaise(data.totalAmount)!;
   const deposit = data.depositAmount === undefined ? before.deposit_amount : toPaise(data.depositAmount)!;
@@ -210,7 +244,7 @@ bookingsAdminRouter.patch("/:id", async (req, res) => {
 });
 
 /** Emails the customer their price and a link to pay online. */
-bookingsAdminRouter.post("/:id/payment-request", async (req, res) => {
+bookingsAdminRouter.post("/:id/payment-request", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
   let b = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();
@@ -240,7 +274,7 @@ bookingsAdminRouter.post("/:id/payment-request", async (req, res) => {
   await respondWithBooking(res, id);
 });
 
-bookingsAdminRouter.post("/:id/payments", async (req, res) => {
+bookingsAdminRouter.post("/:id/payments", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(
     z.object({
@@ -258,7 +292,7 @@ bookingsAdminRouter.post("/:id/payments", async (req, res) => {
   await respondWithBooking(res, id);
 });
 
-bookingsAdminRouter.post("/:id/notes", async (req, res) => {
+bookingsAdminRouter.post("/:id/notes", canWriteNotes, async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(z.object({ body: z.string().trim().min(1).max(2000) }), req.body, res);
   if (!id || !data) return;
@@ -271,7 +305,7 @@ bookingsAdminRouter.post("/:id/notes", async (req, res) => {
 // ---------------- Instalment plan ----------------
 
 /** Replaces the whole plan (the form edits it as one list). Amounts in rupees. */
-bookingsAdminRouter.put("/:id/instalments", async (req, res) => {
+bookingsAdminRouter.put("/:id/instalments", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(instalmentPlanSchema, req.body, res);
   if (!id || !data) return;
@@ -303,7 +337,7 @@ bookingsAdminRouter.put("/:id/instalments", async (req, res) => {
 });
 
 /** Emails a reminder for one instalment now. */
-bookingsAdminRouter.post("/:id/instalments/:iid/remind", async (req, res) => {
+bookingsAdminRouter.post("/:id/instalments/:iid/remind", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
   const iid = parseId(req.params.iid);
   if (!id || !iid) return void res.status(404).json({ ok: false, error: "Not found" });
@@ -322,35 +356,39 @@ bookingsAdminRouter.post("/:id/instalments/:iid/remind", async (req, res) => {
   await respondWithBooking(res, id);
 });
 
-// ---------------- Supplier costs (owner only) ----------------
+// ---------------- Supplier costs (owner and accounts) ----------------
 
-bookingsAdminRouter.post("/:id/costs", requireOwner, async (req, res) => {
+/** A cost goes to a supplier from the list, or a new supplier made from the name typed. */
+bookingsAdminRouter.post("/:id/costs", canManageCosts, async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(costInputSchema, req.body, res);
   if (!id || !data) return;
-  const b = await db.selectFrom("bookings").select("id").where("id", "=", id).executeTakeFirst();
+  const b = await db.selectFrom("bookings").select(["id", "customer_id"]).where("id", "=", id).executeTakeFirst();
   if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const supplier = data.supplierId
+    ? await db.selectFrom("suppliers").select(["id", "name"]).where("id", "=", data.supplierId).executeTakeFirst()
+    : await findOrCreateSupplier(data.supplierName!, supplierTypeForCost[data.category]);
+  if (!supplier) return void res.status(400).json({ ok: false, error: "That supplier doesn't exist" });
+  const amount = Math.round(data.amount * 100);
   await db
     .insertInto("booking_costs")
-    .values({ booking_id: id, category: data.category, supplier: data.supplier, amount: Math.round(data.amount * 100), paid: data.paid, note: data.note })
+    .values({ booking_id: id, category: data.category, supplier_id: supplier.id, supplier: supplier.name, amount, note: data.note })
     .execute();
+  const me = currentUser(res);
+  await addEvent(db, { booking_id: id, customer_id: b.customer_id, author: me.name, body: `${me.name} added a cost: ${supplier.name} ${formatINR(amount)}.` });
   await respondWithBooking(res, id);
 });
 
-bookingsAdminRouter.patch("/:id/costs/:cid", requireOwner, async (req, res) => {
-  const id = parseId(req.params.id);
-  const cid = parseId(req.params.cid);
-  const data = parseBody(z.object({ paid: z.boolean() }), req.body, res);
-  if (!id || !cid || !data) return;
-  await db.updateTable("booking_costs").set({ paid: data.paid }).where("id", "=", cid).where("booking_id", "=", id).execute();
-  await respondWithBooking(res, id);
-});
-
-bookingsAdminRouter.delete("/:id/costs/:cid", requireOwner, async (req, res) => {
+bookingsAdminRouter.delete("/:id/costs/:cid", canManageCosts, async (req, res) => {
   const id = parseId(req.params.id);
   const cid = parseId(req.params.cid);
   if (!id || !cid) return void res.status(404).json({ ok: false, error: "Not found" });
-  await db.deleteFrom("booking_costs").where("id", "=", cid).where("booking_id", "=", id).execute();
+  const row = await db.deleteFrom("booking_costs").where("id", "=", cid).where("booking_id", "=", id).returning(["supplier", "amount"]).executeTakeFirst();
+  if (row) {
+    const b = await db.selectFrom("bookings").select("customer_id").where("id", "=", id).executeTakeFirstOrThrow();
+    const me = currentUser(res);
+    await addEvent(db, { booking_id: id, customer_id: b.customer_id, author: me.name, body: `${me.name} removed a cost: ${row.supplier} ${formatINR(row.amount)}.` });
+  }
   await respondWithBooking(res, id);
 });
 
@@ -402,7 +440,7 @@ bookingsAdminRouter.get("/:id/invoice", async (req, res) => {
 });
 
 /** Gives the booking its invoice number: <prefix><financial year>/<running number>. */
-bookingsAdminRouter.post("/:id/invoice", async (req, res) => {
+bookingsAdminRouter.post("/:id/invoice", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
   const settings = await getSettings();
@@ -432,7 +470,7 @@ bookingsAdminRouter.post("/:id/invoice", async (req, res) => {
 
 // ---------------- Feedback ----------------
 
-bookingsAdminRouter.post("/:id/feedback-request", async (req, res) => {
+bookingsAdminRouter.post("/:id/feedback-request", canEditTrip, async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
   const b = await db.selectFrom("bookings").selectAll().where("id", "=", id).executeTakeFirst();

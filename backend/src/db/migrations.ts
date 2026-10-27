@@ -379,6 +379,87 @@ migrations["0005_reviews"] = {
   },
 };
 
+migrations["0006_roles_suppliers_notifications"] = {
+  async up(db: Kysely<any>) {
+    const now = sql`now()`;
+
+    // Roles: the old all-round "staff" login becomes a Manager (same access, plus reports).
+    await db.updateTable("users").set({ role: "manager" }).where("role", "=", "staff").execute();
+
+    await db.schema
+      .createTable("suppliers")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("name", "text", (c) => c.notNull())
+      .addColumn("type", "text", (c) => c.notNull().defaultTo("other"))
+      .addColumn("contact_person", "text")
+      .addColumn("phone", "text")
+      .addColumn("email", "text")
+      .addColumn("notes", "text")
+      .addColumn("active", "boolean", (c) => c.notNull().defaultTo(true))
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .addColumn("updated_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await sql`create unique index suppliers_name_key on suppliers (lower(name))`.execute(db);
+
+    await db.schema.alterTable("booking_costs").addColumn("supplier_id", "integer", (c) => c.references("suppliers.id").onDelete("restrict")).execute();
+    await db.schema.createIndex("booking_costs_supplier_idx").on("booking_costs").column("supplier_id").execute();
+
+    // Money paid to suppliers. Never deleted: a mistake is voided, so the history stays.
+    await db.schema
+      .createTable("supplier_payments")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("supplier_id", "integer", (c) => c.notNull().references("suppliers.id").onDelete("restrict"))
+      .addColumn("amount", "bigint", (c) => c.notNull())
+      .addColumn("paid_on", "date", (c) => c.notNull())
+      .addColumn("method", "text")
+      .addColumn("reference", "text")
+      .addColumn("note", "text")
+      .addColumn("created_by", "text")
+      .addColumn("voided_at", "timestamptz")
+      .addColumn("void_reason", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("supplier_payments_supplier_idx").on("supplier_payments").columns(["supplier_id", "paid_on"]).execute();
+
+    // Every supplier name typed on a cost so far becomes a supplier (same name, any case = one
+    // supplier), typed by the kind of cost it was first used for.
+    await sql`
+      insert into suppliers (name, type)
+      select distinct on (lower(trim(supplier))) trim(supplier),
+        case category when 'flight' then 'airline' when 'hotel' then 'hotel' when 'visa' then 'visa'
+          when 'transport' then 'transport' when 'food' then 'ground' when 'guide' then 'ground'
+          when 'insurance' then 'insurance' else 'other' end
+      from booking_costs
+      where trim(supplier) <> ''
+      order by lower(trim(supplier)), created_at
+    `.execute(db);
+    await sql`update booking_costs c set supplier_id = s.id from suppliers s where lower(trim(c.supplier)) = lower(s.name)`.execute(db);
+    // Costs already ticked "paid" become payments, so the new balances start out right.
+    await sql`
+      insert into supplier_payments (supplier_id, amount, paid_on, note, created_at)
+      select supplier_id, amount, (created_at at time zone 'Asia/Kolkata')::date, 'Marked paid before supplier tracking', created_at
+      from booking_costs where paid and supplier_id is not null
+    `.execute(db);
+
+    // In-app alerts. user_id 0 is the main owner login (from the server settings).
+    await db.schema
+      .createTable("notifications")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("user_id", "integer", (c) => c.notNull())
+      .addColumn("type", "text", (c) => c.notNull())
+      .addColumn("title", "text", (c) => c.notNull())
+      .addColumn("body", "text")
+      .addColumn("link", "text")
+      .addColumn("read_at", "timestamptz")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(now))
+      .execute();
+    await db.schema.createIndex("notifications_user_idx").on("notifications").columns(["user_id", "created_at"]).execute();
+
+    // So a due follow-up alerts its owner once, not every half hour.
+    await db.schema.alterTable("leads").addColumn("follow_up_notified_at", "timestamptz").execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

@@ -7,6 +7,7 @@ import { formatTravelMonth, leadStatuses, leadStatusLabels } from "@dilruba/shar
 import type { AdminLead, Paged } from "@dilruba/shared/crm";
 import { useAdminData } from "@/lib/admin-api";
 import { Empty, ErrorBox, LeadBadge, ListFilters, Loading, PageHeader, Pagination, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 export default function LeadsPage() {
   const params = useSearchParams();
@@ -14,6 +15,7 @@ export default function LeadsPage() {
   const pathname = usePathname();
   const { data, error, reload } = useAdminData<Paged<AdminLead>>(`/leads?${params.toString()}`);
   const mine = params.get("assigned") === "me";
+  const can = useCan();
   const toggleMine = () => {
     const sp = new URLSearchParams(params.toString());
     if (mine) sp.delete("assigned");
@@ -29,10 +31,13 @@ export default function LeadsPage() {
         subtitle="Enquiries from the website, phone and walk-ins. Contact them, send a quote, then convert to a booking."
         actions={
           <>
-            <button type="button" onClick={toggleMine} aria-pressed={mine} className={`btn !py-2 ${mine ? "bg-ink text-white" : "btn-outline"}`}>
-              My leads
-            </button>
-            <Link href="/admin/leads/new" className="btn btn-primary !py-2"><Plus className="size-4" aria-hidden /> Add lead</Link>
+            {/* Sales only ever see their own leads, so the toggle is for everyone else. */}
+            {can("leads.all") && (
+              <button type="button" onClick={toggleMine} aria-pressed={mine} className={`btn !py-2 ${mine ? "bg-ink text-white" : "btn-outline"}`}>
+                My leads
+              </button>
+            )}
+            {can("leads.write") && <Link href="/admin/leads/new" className="btn btn-primary !py-2"><Plus className="size-4" aria-hidden /> Add lead</Link>}
           </>
         }
       />

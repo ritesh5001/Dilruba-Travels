@@ -5,7 +5,21 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { config } from "../../config.ts";
 import { db } from "../../db/index.ts";
-import { clearSessionCookie, currentUser, envOwner, getAdmin, rateLimit, requireAdmin, requireOwner, safeEqual, setSessionCookie, verifyPassword } from "../../lib/auth.ts";
+import {
+  clearSessionCookie,
+  currentUser,
+  envOwner,
+  getAdmin,
+  guard,
+  rateLimit,
+  requireAdmin,
+  requireOwner,
+  requirePermission,
+  safeEqual,
+  setSessionCookie,
+  userCan,
+  verifyPassword,
+} from "../../lib/auth.ts";
 import { parseBody } from "../../lib/util.ts";
 import { dashboardAlerts } from "../../services/alerts.ts";
 import { bookingsAdminRouter } from "./bookings.ts";
@@ -18,6 +32,8 @@ import { reportsRouter } from "./reports.ts";
 import { reviewsRouter } from "./reviews.ts";
 import { settingsRouter } from "./settings.ts";
 import { staffRouter } from "./staff.ts";
+import { notificationsRouter } from "./notifications.ts";
+import { suppliersRouter } from "./suppliers.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminPayment } from "./mappers.ts";
 
 export const adminRouter = Router();
@@ -106,26 +122,37 @@ adminRouter.get("/dashboard", async (_req, res) => {
       .where("status", "=", "paid")
       .where("paid_at", ">=", monthStart)
       .executeTakeFirstOrThrow(),
-    leadsQuery().orderBy("leads.created_at", "desc").limit(6).execute(),
+    // Sales see only their own leads; roles without lead access see none.
+    userCan(res, "leads.read")
+      ? leadsQuery()
+          .$if(!userCan(res, "leads.all"), (q) => q.where("leads.assigned_to", "=", me.id))
+          .orderBy("leads.created_at", "desc")
+          .limit(6)
+          .execute()
+      : Promise.resolve([]),
     bookingsQuery().orderBy("bookings.created_at", "desc").limit(6).execute(),
-    db
-      .selectFrom("payments")
-      .innerJoin("bookings", "bookings.id", "payments.booking_id")
-      .innerJoin("customers", "customers.id", "bookings.customer_id")
-      .selectAll("payments")
-      .select(["bookings.reference", "customers.name as customer_name"])
-      .where("payments.status", "=", "paid")
-      .orderBy("payments.paid_at", "desc")
-      .limit(6)
-      .execute(),
-    // Staff see their own follow-ups and unassigned ones; the owner sees everyone's.
-    leadsQuery()
-      .where("leads.follow_up_at", "<=", sql<Date>`now()`)
-      .where("leads.status", "not in", ["converted", "lost"])
-      .$if(me.role !== "owner", (q) => q.where((eb) => eb.or([eb("leads.assigned_to", "=", me.id), eb("leads.assigned_to", "is", null)])))
-      .orderBy("leads.follow_up_at")
-      .limit(20)
-      .execute(),
+    userCan(res, "payments.write") || userCan(res, "reports")
+      ? db
+          .selectFrom("payments")
+          .innerJoin("bookings", "bookings.id", "payments.booking_id")
+          .innerJoin("customers", "customers.id", "bookings.customer_id")
+          .selectAll("payments")
+          .select(["bookings.reference", "customers.name as customer_name"])
+          .where("payments.status", "=", "paid")
+          .orderBy("payments.paid_at", "desc")
+          .limit(6)
+          .execute()
+      : Promise.resolve([]),
+    // Sales see their own follow-ups; managers and owners see everyone's.
+    userCan(res, "leads.read")
+      ? leadsQuery()
+          .where("leads.follow_up_at", "<=", sql<Date>`now()`)
+          .where("leads.status", "not in", ["converted", "lost"])
+          .$if(!userCan(res, "leads.all"), (q) => q.where("leads.assigned_to", "=", me.id))
+          .orderBy("leads.follow_up_at")
+          .limit(20)
+          .execute()
+      : Promise.resolve([]),
     dashboardAlerts(),
   ]);
 
@@ -143,21 +170,28 @@ adminRouter.get("/dashboard", async (_req, res) => {
     recentPayments: recentPayments.map((p) => ({ ...toAdminPayment(p), bookingId: p.booking_id, reference: p.reference, customerName: p.customer_name })),
     followUps: followUps.map(toAdminLead),
     ...alerts,
+    // Each role sees the alerts it can act on.
+    instalmentsDue: userCan(res, "payments.write") ? alerts.instalmentsDue : [],
+    passportAlerts: userCan(res, "documents.read") ? alerts.passportAlerts : [],
   };
   res.json(body);
 });
 
-adminRouter.use("/leads", leadsRouter);
-adminRouter.use("/bookings", bookingsAdminRouter);
-adminRouter.use("/customers", customersRouter);
-adminRouter.use("/packages", packagesRouter);
-adminRouter.use("/media", mediaRouter);
-adminRouter.use("/departures", departuresRouter);
-adminRouter.use("/quotes", quotesRouter);
+// Each section checks the person's role: reading needs one permission, changing another.
+// (Finer checks, e.g. Sales only seeing their own leads, live in the routers.)
+adminRouter.use("/leads", guard({ read: "leads.read", write: "leads.write" }), leadsRouter);
+adminRouter.use("/quotes", guard({ read: "leads.read", write: "quotes.write" }), quotesRouter);
+adminRouter.use("/bookings", requirePermission("bookings.read"), bookingsAdminRouter);
+adminRouter.use("/customers", guard({ read: "customers.read", write: "customers.write" }), customersRouter);
+adminRouter.use("/packages", guard({ read: "bookings.read", write: "catalog.write" }), packagesRouter);
+adminRouter.use("/media", requirePermission("catalog.write"), mediaRouter);
+adminRouter.use("/departures", guard({ read: "bookings.read", write: "catalog.write" }), departuresRouter);
+adminRouter.use("/reviews", requirePermission("catalog.write"), reviewsRouter);
 adminRouter.use("/reports", reportsRouter);
-adminRouter.use("/reviews", reviewsRouter);
+adminRouter.use("/suppliers", requirePermission("costs"), suppliersRouter);
+adminRouter.use("/notifications", notificationsRouter);
 adminRouter.use("/staff", requireOwner, staffRouter);
-adminRouter.use("/settings", requireOwner, settingsRouter);
+adminRouter.use("/settings", requirePermission("settings"), settingsRouter);
 
 /** Active staff, for "assign to" menus (everyone can see who their colleagues are). */
 adminRouter.get("/team", async (_req, res) => {

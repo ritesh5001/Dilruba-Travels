@@ -172,8 +172,24 @@ export async function documentsFor(travellerIds: number[]) {
   return map;
 }
 
-export function toAdminCost(c: BookingCost): AdminCost {
-  return { id: c.id, category: c.category, supplier: c.supplier, amount: c.amount, paid: c.paid, note: c.note, createdAt: iso(c.created_at) };
+/**
+ * A cost with its supplier's current name and how far that supplier's payments cover it.
+ * Costs from before supplier tracking without a supplier fall back to their old "paid" tick.
+ */
+export function toAdminCost(c: BookingCost & { supplier_name?: string | null }, allocation?: { covered: number; state: AdminCost["state"] }): AdminCost {
+  const legacy = { covered: c.paid ? c.amount : 0, state: (c.paid ? "paid" : "unpaid") as AdminCost["state"] };
+  const a = c.supplier_id ? (allocation ?? { covered: 0, state: "unpaid" as const }) : legacy;
+  return {
+    id: c.id,
+    category: c.category,
+    supplierId: c.supplier_id,
+    supplier: c.supplier_name ?? c.supplier,
+    amount: c.amount,
+    covered: a.covered,
+    state: a.state,
+    note: c.note,
+    createdAt: iso(c.created_at),
+  };
 }
 
 export function quotesQuery() {

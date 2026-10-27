@@ -215,6 +215,23 @@ export function feedbackRequestEmail(b: Booking, c: Customer, opts: { referralCo
   });
 }
 
+export function enquiryAckEmail(l: Lead, c: Customer, staffName: string | null) {
+  const what = l.package_name ?? `${l.service}${l.option ? ` (${l.option})` : ""}`;
+  return build({
+    to: c.email!,
+    subject: `We've received your enquiry – ${what}`,
+    heading: `Assalamu Alaikum ${c.name.split(" ")[0]}, thank you for your enquiry`,
+    intro: `We've received your enquiry about <strong>${e(what)}</strong>.${staffName ? ` ${e(staffName)} from our team` : " Our team"} will contact you shortly, usually within one working day, with dates and today's best price.`,
+    rows: [
+      ["Interested in", what],
+      ["Travel", formatTravelMonth(l.travel_month)],
+      ["Travellers", l.travellers ? String(l.travellers) : "—"],
+    ],
+    button: { label: "Chat with us on WhatsApp", href: whatsappLink(`Assalamu Alaikum, I just sent an enquiry about ${what}.`) },
+    footer: helpLine,
+  });
+}
+
 // ---------------- Owner alerts ----------------
 
 export function adminDigestEmail(d: {

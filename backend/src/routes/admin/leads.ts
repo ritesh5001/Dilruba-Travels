@@ -5,12 +5,23 @@ import { Router } from "express";
 import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
-import { currentUser } from "../../lib/auth.ts";
+import { currentUser, userCan } from "../../lib/auth.ts";
 import { accessToken, bookingReference, likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { addEvent, upsertCustomer } from "../../services/crm.ts";
+import { notify } from "../../services/notifications.ts";
 import { leadsQuery, quotesQuery, toAdminLead, toAdminNote, toAdminQuote } from "./mappers.ts";
 
 export const leadsRouter = Router();
+
+// Sales (no "all leads" permission) only ever see and touch the leads assigned to them.
+// Anyone else's lead looks like it doesn't exist.
+leadsRouter.param("id", async (req, res, next, value) => {
+  if (userCan(res, "leads.all")) return next();
+  const id = parseId(value);
+  const lead = id && (await db.selectFrom("leads").select("assigned_to").where("id", "=", id).executeTakeFirst());
+  if (!lead || lead.assigned_to !== currentUser(res).id) return void res.status(404).json({ ok: false, error: "Lead not found" });
+  next();
+});
 
 leadsRouter.get("/", async (req, res) => {
   const page = pageParam(req.query.page);
@@ -19,6 +30,7 @@ leadsRouter.get("/", async (req, res) => {
   const me = currentUser(res);
 
   let query = leadsQuery();
+  if (!userCan(res, "leads.all")) query = query.where("leads.assigned_to", "=", me.id);
   if (status) query = query.where("leads.status", "=", status);
   // ?status=followup: every open lead whose follow-up date has arrived.
   if (req.query.status === "followup") query = query.where("leads.follow_up_at", "<=", sql<Date>`now()`).where("leads.status", "not in", ["converted", "lost"]);
@@ -78,7 +90,8 @@ leadsRouter.post("/", async (req, res) => {
         message: data.message || null,
         source: data.source,
         status: "contacted",
-        assigned_to: data.assignToMe && me.id ? me.id : null,
+        // Sales always own the leads they add.
+        assigned_to: (data.assignToMe || !userCan(res, "leads.all")) && me.id ? me.id : null,
       })
       .returning("id")
       .executeTakeFirstOrThrow();
@@ -138,6 +151,9 @@ leadsRouter.patch("/:id", async (req, res) => {
     return void res.status(400).json({ ok: false, error: "Choose why this lead was lost" });
   }
   let assignee: { id: number; name: string } | null | undefined;
+  if (data.assignedTo !== undefined && data.assignedTo !== before.assigned_to && !userCan(res, "leads.all")) {
+    return void res.status(403).json({ ok: false, error: "Only managers can reassign leads" });
+  }
   if (data.assignedTo !== undefined) {
     assignee = data.assignedTo === null ? null : ((await db.selectFrom("users").select(["id", "name"]).where("id", "=", data.assignedTo).where("active", "=", true).executeTakeFirst()) ?? undefined);
     if (assignee === undefined) return void res.status(400).json({ ok: false, error: "That staff member doesn't exist" });
@@ -166,12 +182,20 @@ leadsRouter.patch("/:id", async (req, res) => {
         follow_up_at: followUpAt,
         follow_up_note: followUpNote,
         assigned_to: assignee === undefined ? before.assigned_to : (assignee?.id ?? null),
+        // A new follow-up date gets its own "due" alert.
+        follow_up_notified_at: (followUpAt?.getTime() ?? null) === (before.follow_up_at?.getTime() ?? null) ? before.follow_up_notified_at : null,
         updated_at: new Date(),
       })
       .where("id", "=", id)
       .execute();
     if (changes.length) await addEvent(trx, { lead_id: id, author: me.name, body: `${me.name}: ${changes.join("; ")}.` });
   });
+  if (assignee && assignee.id !== before.assigned_to && assignee.id !== me.id) {
+    void notify(
+      { userIds: [assignee.id] },
+      { type: "lead", title: `${me.name} assigned you a lead: ${before.customer_name}`, body: before.package_name ?? before.service, link: `/admin/leads/${id}` },
+    );
+  }
   res.json(await loadLead(id));
 });
 

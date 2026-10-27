@@ -10,6 +10,7 @@ import { lostReasons } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { leadTemplates } from "@/lib/whatsapp-templates";
 import { BookingBadge, Card, Empty, ErrorBox, Field, LeadBadge, Loading, NotesPanel, PageHeader, QuoteBadge, WhatsAppTemplates, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 /** "2026-10-22T10:00" in the browser's time zone, for <input type="datetime-local">. */
 function toLocalInput(d: Date) {
@@ -30,6 +31,7 @@ export default function LeadDetailPage() {
   const { data: lead, setData, error, reload } = useAdminData<AdminLeadDetail>(`/leads/${id}`);
   const { data: team } = useAdminData<StaffRef[]>("/team");
   const action = useAction();
+  const can = useCan();
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!lead) return <Loading />;
@@ -59,12 +61,12 @@ export default function LeadDetailPage() {
           <>
             <WhatsAppTemplates phone={lead.customer.phone} templates={leadTemplates(lead, sentQuote?.link)} />
             <a href={`tel:${lead.customer.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
-            {open && (
+            {open && can("quotes.write") && (
               <Link href={`/admin/quotes/new?lead=${lead.id}`} className="btn btn-outline !py-2">
                 <FilePlus2 className="size-4" aria-hidden /> New quote
               </Link>
             )}
-            {lead.status !== "converted" && (
+            {lead.status !== "converted" && can("leads.write") && (
               <button type="button" onClick={convert} disabled={action.busy} className="btn btn-primary !py-2 disabled:opacity-60">
                 {action.busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowRightLeft className="size-4" aria-hidden />} Convert to booking
               </button>
@@ -95,7 +97,7 @@ export default function LeadDetailPage() {
 
           <Card
             title="Quotes"
-            actions={open && <Link href={`/admin/quotes/new?lead=${lead.id}`} className="text-sm font-medium text-brand">New quote</Link>}
+            actions={open && can("quotes.write") && <Link href={`/admin/quotes/new?lead=${lead.id}`} className="text-sm font-medium text-brand">New quote</Link>}
           >
             {lead.quotes.length === 0 ? (
               <Empty>No quotes yet. Send a written quote the customer can accept online.</Empty>
@@ -117,6 +119,7 @@ export default function LeadDetailPage() {
           </Card>
 
           <NotesPanel
+            readOnly={!can("leads.write")}
             notes={lead.notes}
             onAdd={async (body) => {
               const updated = await action.run(() => adminFetch<AdminLeadDetail>(`/leads/${id}/notes`, { method: "POST", body: { body } }));
@@ -127,14 +130,15 @@ export default function LeadDetailPage() {
         </div>
 
         <div className="space-y-6">
-          {open && <FollowUpCard key={`${lead.followUpAt}-${lead.followUpNote}`} lead={lead} busy={action.busy} onSave={update} />}
-          <StatusCard key={lead.status} lead={lead} busy={action.busy} onSave={update} />
+          {open && can("leads.write") && <FollowUpCard key={`${lead.followUpAt}-${lead.followUpNote}`} lead={lead} busy={action.busy} onSave={update} />}
+          {can("leads.write") && <StatusCard key={lead.status} lead={lead} busy={action.busy} onSave={update} />}
           <Card title="Assigned to">
             <label htmlFor="lead-assign" className="sr-only">Assigned to</label>
             <select
               id="lead-assign"
               value={lead.assignedTo?.id ?? ""}
-              disabled={action.busy}
+              // Only managers and owners hand leads to other people.
+              disabled={action.busy || !can("leads.write") || !can("leads.all")}
               onChange={(e) => void update({ assignedTo: e.target.value ? Number(e.target.value) : null })}
               className="field appearance-none"
             >

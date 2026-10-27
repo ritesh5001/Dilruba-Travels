@@ -42,9 +42,27 @@ setup is needed.
 
 Open **`/admin`** (locally http://localhost:3000/admin) and log in with `ADMIN_EMAIL` and the password
 you hashed with `npm run admin:hash -w backend`. That owner login always works; change its password by
-generating a new hash. Add your team under **Staff**: each person gets their own login as Owner or Staff,
-and every note and change records who made it. Staff can't see Reports, Campaigns, supplier costs,
-Staff or Settings.
+generating a new hash. Add your team under **Staff**: each person gets their own login, and every note
+and change records who made it. Roles are checked by the server on every request:
+
+| Role | Can |
+|---|---|
+| Owner | Everything, incl. staff, settings and supplier costs |
+| Manager | All leads, quotes, bookings, payments, travellers, packages and reports |
+| Sales | Only the leads assigned to them, their quotes and those customers; bookings read-only |
+| Operations | Bookings, travellers, passports and visas, departures and packages |
+| Accounts | Prices, payments, instalments, invoices, supplier costs, suppliers and reports |
+| Viewer | Read-only leads, customers, quotes and bookings |
+
+The bell at the top of the panel shows each person's alerts: leads assigned to them, follow-ups due,
+new website bookings (operations), online payments and overdue instalments (accounts), quote answers
+and low ratings. Website leads are assigned automatically (Settings → New leads): to whoever handled
+the customer before, otherwise the Sales person with the fewest open leads. The customer is thanked
+straight away by email.
+
+**Suppliers** lists everyone you buy from (airlines, hotels, visa agents, transport) with what each
+booking costs you, what you've paid and what you owe. Payments clear a supplier's oldest costs first;
+a mistaken payment is voided with a reason, never deleted.
 
 - **Dashboard:** new leads, bookings to action, money received and still to collect, plus what needs
   doing today: follow-ups due, instalments due this week, passports to fix, upcoming departures with

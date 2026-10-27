@@ -6,6 +6,7 @@ import { adminFeedbackEmail } from "../email/templates.ts";
 import { rateLimit, safeEqual } from "../lib/auth.ts";
 import { parseBody } from "../lib/util.ts";
 import { addEvent } from "../services/crm.ts";
+import { notify } from "../services/notifications.ts";
 import { getSettings } from "../services/settings.ts";
 
 // After the trip: the customer rates it from the link in their email. Happy customers are then
@@ -54,6 +55,12 @@ feedbackRouter.post(
     await addEvent(db, { booking_id: b.id, customer_id: b.customer_id, body: `Customer rated the trip ${data.rating}/5${data.comment ? `: "${data.comment}"` : "."}${data.comment && data.canPublish ? " They agreed it can be shown on the website." : ""}` });
     const c = await db.selectFrom("customers").selectAll().where("id", "=", b.customer_id).executeTakeFirstOrThrow();
     void notifyAdmin(adminFeedbackEmail(b, c, data.rating, data.comment));
+    if (data.rating <= 3) {
+      void notify(
+        { roles: ["owner", "manager"] },
+        { type: "feedback", title: `${c.name} rated their trip ${data.rating}/5`, body: data.comment ?? "Please call them to make it right.", link: `/admin/bookings/${b.id}` },
+      );
+    }
     const settings = await getSettings();
     res.json({ ok: true, googleReviewUrl: data.rating >= 4 ? settings.googleReviewUrl || null : null });
   },

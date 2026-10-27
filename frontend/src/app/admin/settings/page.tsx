@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { categoryNames, categorySlugs } from "@dilruba/shared/catalog";
-import type { Settings } from "@dilruba/shared/ops";
+import type { IntegrationStatus, Settings } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { Card, ErrorBox, Loading, PageHeader } from "@/components/admin/ui";
 
 export default function SettingsPage() {
   const { data, setData, error, reload } = useAdminData<Settings>("/settings");
+  const { data: integrations } = useAdminData<IntegrationStatus>("/settings/integrations");
   const action = useAction();
   const [saved, setSaved] = useState(false);
 
@@ -42,6 +43,8 @@ export default function SettingsPage() {
                 instalmentReminders: f.get("instalmentReminders") === "on",
                 dailyDigest: f.get("dailyDigest") === "on",
                 feedbackRequests: f.get("feedbackRequests") === "on",
+                autoAssignLeads: f.get("autoAssignLeads") === "on",
+                autoAcknowledge: f.get("autoAcknowledge") === "on",
               },
             }),
           );
@@ -117,6 +120,45 @@ export default function SettingsPage() {
               <p className="mt-1 text-xs text-muted">Shown in the thank-you email next to the customer&apos;s referral code.</p>
             </div>
           </div>
+        </Card>
+
+        <Card title="New leads">
+          <div className="grid gap-3 text-sm">
+            <label className="flex items-start gap-2">
+              <input type="checkbox" name="autoAssignLeads" defaultChecked={data.autoAssignLeads} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+              <span>
+                <strong>Assign website leads automatically</strong> to the Sales person with the fewest open leads (Managers if there are no Sales staff).
+                A returning customer goes back to whoever handled them before. They get an alert in the panel.
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input type="checkbox" name="autoAcknowledge" defaultChecked={data.autoAcknowledge} className="mt-0.5 size-4 accent-[var(--color-brand)]" />
+              <span>
+                <strong>Thank the customer straight away</strong> by email (when they give one), naming who will call them.
+              </span>
+            </label>
+          </div>
+        </Card>
+
+        <Card title="Connected services">
+          {!integrations ? (
+            <p className="text-sm text-muted">Checking…</p>
+          ) : (
+            <ul className="grid gap-3 text-sm">
+              {[
+                { on: integrations.email, name: "Email (Resend)", off: "Emails are not being sent. Add RESEND_API_KEY on the server." },
+                { on: integrations.onlinePayments, name: "Online payments (Razorpay)", off: "Not connected: customers can't pay online. Add the Razorpay keys on the server." },
+              ].map((i) => (
+                <li key={i.name} className="flex items-start gap-3">
+                  <span className={`mt-1 size-2.5 shrink-0 rounded-full ${i.on ? "bg-[#25d366]" : "bg-amber"}`} aria-hidden />
+                  <span>
+                    <strong>{i.name}</strong> · {i.on ? "connected" : "not connected"}
+                    {!i.on && <span className="block text-xs text-muted">{i.off}</span>}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
 
         <Card title="Automatic emails">

@@ -10,19 +10,22 @@ import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { WhatsAppIcon } from "@/components/icons";
 import { QuoteEditor } from "@/components/admin/quote-editor";
 import { Card, ErrorBox, Field, Loading, PageHeader, QuoteBadge, customerWhatsapp, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 export default function QuoteDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: q, setData, error, reload } = useAdminData<AdminQuote>(`/quotes/${id}`);
   const action = useAction();
+  const can = useCan();
   const [flash, setFlash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!q) return <Loading />;
 
-  const locked = q.bookingId !== null;
+  // Accepted quotes are fixed; roles that can't write quotes (Viewer) only read them.
+  const locked = q.bookingId !== null || !can("quotes.write");
 
   async function send(email: boolean) {
     setFlash(null);
@@ -54,7 +57,7 @@ export default function QuoteDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
         <div>
           {locked ? (
-            <Card title="Accepted quote">
+            <Card title={q.bookingId ? "Accepted quote" : "Quote"}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Trip">{q.title}</Field>
                 <Field label="Travel">{formatTravelMonth(q.travelMonth)}</Field>
@@ -69,7 +72,7 @@ export default function QuoteDetailPage() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-muted">This quote is now a booking. Change prices on the booking.</p>
+              {q.bookingId && <p className="mt-3 text-xs text-muted">This quote is now a booking. Change prices on the booking.</p>}
             </Card>
           ) : (
             <QuoteEditor key={q.id + q.createdAt} quote={q} onSaved={(u) => { setData(u); setFlash("Quote saved."); }} />
@@ -156,7 +159,7 @@ export default function QuoteDetailPage() {
               <Field label="Sent">{q.sentAt ? formatDate(q.sentAt, true) : "Not yet"}</Field>
               <Field label="Answered">{q.respondedAt ? formatDate(q.respondedAt, true) : "—"}</Field>
             </div>
-            {q.status === "draft" && (
+            {q.status === "draft" && !locked && (
               <button
                 type="button"
                 disabled={action.busy}

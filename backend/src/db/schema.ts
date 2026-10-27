@@ -1,5 +1,5 @@
 import type { BookingStatus, LeadStatus } from "@dilruba/shared/booking";
-import type { CostCategory, DepartureStatus, DocumentKind, QuoteItem, QuoteStatus, RoomType, StaffRole, VisaStatus } from "@dilruba/shared/ops";
+import type { CostCategory, DepartureStatus, DocumentKind, QuoteItem, QuoteStatus, RoomType, StaffRole, SupplierType, VisaStatus } from "@dilruba/shared/ops";
 import type { ColumnType, Generated, Insertable, Selectable } from "kysely";
 
 type CreatedAt = ColumnType<Date, Date | string | undefined, never>;
@@ -34,6 +34,8 @@ export interface LeadTable {
   follow_up_note: string | null;
   lost_reason: string | null;
   assigned_to: number | null;
+  /** When the assignee was alerted that the follow-up is due (cleared when the date changes). */
+  follow_up_notified_at: Date | null;
   created_at: CreatedAt;
   updated_at: UpdatedAt;
 }
@@ -219,6 +221,8 @@ export interface BookingCostTable {
   id: Generated<number>;
   booking_id: number;
   category: CostCategory;
+  supplier_id: number | null;
+  /** The supplier's name when the cost was added (kept for history; supplier_id is the link). */
   supplier: string;
   amount: number;
   paid: ColumnType<boolean, boolean | undefined, boolean>;
@@ -278,6 +282,46 @@ export interface ReviewTable {
   updated_at: UpdatedAt;
 }
 
+export interface SupplierTable {
+  id: Generated<number>;
+  name: string;
+  type: ColumnType<SupplierType, SupplierType | undefined, SupplierType>;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
+  active: ColumnType<boolean, boolean | undefined, boolean>;
+  created_at: CreatedAt;
+  updated_at: UpdatedAt;
+}
+
+export interface SupplierPaymentTable {
+  id: Generated<number>;
+  supplier_id: number;
+  /** Paise. */
+  amount: number;
+  paid_on: DateColumn;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
+  created_by: string | null;
+  voided_at: Date | null;
+  void_reason: string | null;
+  created_at: CreatedAt;
+}
+
+export interface NotificationTable {
+  id: Generated<number>;
+  /** A staff user's id, or 0 for the main owner login. */
+  user_id: number;
+  type: string;
+  title: string;
+  body: string | null;
+  link: string | null;
+  read_at: Date | null;
+  created_at: CreatedAt;
+}
+
 export interface SettingTable {
   key: string;
   value: Json<unknown>;
@@ -294,6 +338,9 @@ export interface Database {
   quotes: QuoteTable;
   feedback: FeedbackTable;
   reviews: ReviewTable;
+  suppliers: SupplierTable;
+  supplier_payments: SupplierPaymentTable;
+  notifications: NotificationTable;
   settings: SettingTable;
   customers: CustomerTable;
   leads: LeadTable;
@@ -319,3 +366,5 @@ export type Instalment = Selectable<InstalmentTable>;
 export type BookingCost = Selectable<BookingCostTable>;
 export type Quote = Selectable<QuoteTable>;
 export type Review = Selectable<ReviewTable>;
+export type Supplier = Selectable<SupplierTable>;
+export type SupplierPaymentRow = Selectable<SupplierPaymentTable>;

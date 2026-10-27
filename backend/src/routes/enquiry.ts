@@ -6,6 +6,9 @@ import { adminNewLeadEmail } from "../email/templates.ts";
 import { rateLimit } from "../lib/auth.ts";
 import { parseBody } from "../lib/util.ts";
 import { addEvent, applyReferral, upsertCustomer } from "../services/crm.ts";
+import { acknowledgeLead, pickAssignee } from "../services/leads.ts";
+import { notify, SUPERVISORS } from "../services/notifications.ts";
+import { getSettings } from "../services/settings.ts";
 
 export const enquiryRouter = Router();
 
@@ -24,9 +27,12 @@ enquiryRouter.post(
       return;
     }
 
-    const { lead, customer } = await db.transaction().execute(async (trx) => {
+    // Read before the transaction: every query inside it goes through trx.
+    const settings = await getSettings();
+    const { lead, customer, assignee } = await db.transaction().execute(async (trx) => {
       const customer = await upsertCustomer(trx, { name: enquiry.name, phone: enquiry.phone, email: enquiry.email ?? null });
       const referrer = await applyReferral(trx, customer.id, referralCode);
+      const assignee = await pickAssignee(trx, customer.id, settings.autoAssignLeads);
       const lead = await trx
         .insertInto("leads")
         .values({
@@ -38,14 +44,24 @@ enquiryRouter.post(
           travellers: enquiry.travellers ?? null,
           message: enquiry.message ?? null,
           source: enquiry.source ?? null,
+          assigned_to: assignee?.id ?? null,
         })
         .returningAll()
         .executeTakeFirstOrThrow();
       if (referrer) await addEvent(trx, { lead_id: lead.id, body: `Referred by ${referrer.name} (code ${referralCode!.toUpperCase()}).` });
-      return { lead, customer };
+      if (assignee) await addEvent(trx, { lead_id: lead.id, body: `Automatically assigned to ${assignee.name}.` });
+      return { lead, customer, assignee };
     });
 
+    const what = lead.package_name ?? lead.service;
     void notifyAdmin(adminNewLeadEmail(lead, customer));
+    void notify(assignee ? { userIds: [assignee.id] } : { roles: SUPERVISORS }, {
+      type: "lead",
+      title: assignee ? `New lead for you: ${customer.name}` : `New unassigned lead: ${customer.name}`,
+      body: `${what}${lead.source ? ` · ${lead.source}` : ""}`,
+      link: `/admin/leads/${lead.id}`,
+    });
+    void acknowledgeLead(lead, customer, assignee).catch((err: unknown) => console.error("[ack] failed:", err));
     res.json({ ok: true });
   },
 );

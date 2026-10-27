@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { sendEmail } from "../../email/send.ts";
 import { quoteEmail } from "../../email/templates.ts";
-import { currentUser } from "../../lib/auth.ts";
+import { currentUser, userCan } from "../../lib/auth.ts";
 import { accessToken, likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { addEvent } from "../../services/crm.ts";
 import { acceptQuote, effectiveStatus } from "../../services/quotes.ts";
@@ -24,11 +24,31 @@ function quoteReference() {
 
 const toAdmin = (r: Parameters<typeof toAdminQuote>[0]): AdminQuote => ({ ...toAdminQuote(r), status: effectiveStatus(r) });
 
+/** Sales only work with quotes on leads assigned to them. */
+async function ownsLead(res: import("express").Response, leadId: number | null | undefined) {
+  if (userCan(res, "leads.all")) return true;
+  if (!leadId) return false;
+  const lead = await db.selectFrom("leads").select("assigned_to").where("id", "=", leadId).executeTakeFirst();
+  return lead?.assigned_to === currentUser(res).id;
+}
+
+quotesRouter.param("id", async (req, res, next, value) => {
+  if (userCan(res, "leads.all")) return next();
+  const id = parseId(value);
+  const quote = id && (await db.selectFrom("quotes").select("lead_id").where("id", "=", id).executeTakeFirst());
+  if (!quote || !(await ownsLead(res, quote.lead_id))) return void res.status(404).json({ ok: false, error: "Quote not found" });
+  next();
+});
+
 quotesRouter.get("/", async (req, res) => {
   const page = pageParam(req.query.page);
   const status = quoteStatuses.find((s) => s === req.query.status);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   let query = quotesQuery();
+  if (!userCan(res, "leads.all")) {
+    const me = currentUser(res).id;
+    query = query.where((eb) => eb.exists(eb.selectFrom("leads").select("leads.id").whereRef("leads.id", "=", "quotes.lead_id").where("leads.assigned_to", "=", me)));
+  }
   if (status) query = query.where("quotes.status", "=", status);
   if (q) {
     const pattern = likePattern(q);
@@ -76,6 +96,7 @@ function columns(d: z.output<typeof quoteInputSchema>) {
 quotesRouter.post("/", async (req, res) => {
   const data = parseBody(quoteInputSchema, req.body, res);
   if (!data) return;
+  if (!(await ownsLead(res, data.leadId))) return void res.status(403).json({ ok: false, error: "Start quotes from one of your own leads" });
   const customer = await db.selectFrom("customers").select("id").where("id", "=", data.customerId).executeTakeFirst();
   if (!customer) return void res.status(400).json({ ok: false, error: "Customer not found" });
   const me = currentUser(res);
@@ -92,6 +113,7 @@ quotesRouter.put("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(quoteInputSchema, req.body, res);
   if (!id || !data) return;
+  if (!(await ownsLead(res, data.leadId))) return void res.status(403).json({ ok: false, error: "Quotes must stay on one of your own leads" });
   const before = await db.selectFrom("quotes").select(["status", "booking_id"]).where("id", "=", id).executeTakeFirst();
   if (!before) return void res.status(404).json({ ok: false, error: "Quote not found" });
   if (before.booking_id) return void res.status(409).json({ ok: false, error: "This quote was accepted and is now a booking. Change the booking instead." });
