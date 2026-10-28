@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowRightLeft, BellRing, FilePlus2, Gift, Loader2, Phone } from "lucide-react";
+import { ArrowRightLeft, BellRing, FilePlus2, Gift, Loader2, Phone, Trash2 } from "lucide-react";
 import { formatINR, formatTravelMonth, leadStatuses, leadStatusLabels, type LeadStatus } from "@dilruba/shared/booking";
 import type { AdminLeadDetail, StaffRef } from "@dilruba/shared/crm";
 import { lostReasons } from "@dilruba/shared/ops";
@@ -166,6 +166,22 @@ export default function LeadDetailPage() {
                 ))}
               </ul>
             </Card>
+          )}
+          {can("leads.all") && can("leads.write") && (
+            <button
+              type="button"
+              disabled={action.busy}
+              onClick={() => {
+                if (!window.confirm(`Delete this enquiry from ${lead.customer.name}? Its notes are deleted too. This can't be undone.`)) return;
+                void action.run(async () => {
+                  await adminFetch(`/leads/${id}`, { method: "DELETE" });
+                  router.replace("/admin/leads");
+                });
+              }}
+              className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand disabled:opacity-50"
+            >
+              <Trash2 className="size-4" aria-hidden /> Delete this lead
+            </button>
           )}
         </div>
       </div>

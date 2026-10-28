@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { enquirySchema, services } from "@dilruba/shared/enquiry";
 import { todayIST } from "@dilruba/shared/ops";
@@ -23,7 +24,9 @@ const isPilgrimage = (s: Service) => s === "Umrah" || s === "Hajj";
  * sharing, people). It arrives in the CRM as a lead with every detail in the message.
  */
 export function CustomPackageForm() {
-  const [service, setService] = useState<Service>("Umrah");
+  // ?trip=Turkey (from the menu's "Customised Tour") picks the trip type.
+  const trip = useSearchParams().get("trip")?.toLowerCase();
+  const [service, setService] = useState<Service>(() => tripTypes.find((t) => t.toLowerCase() === trip || t.toLowerCase().startsWith(`${trip} `)) ?? "Umrah");
   const [budget, setBudget] = useState("");
   const [state, setState] = useState<{ sending?: boolean; error?: string; done?: { name: string; text: string } }>({});
   const [today] = useState(() => todayIST());

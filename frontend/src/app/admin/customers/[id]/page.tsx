@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useParams } from "next/navigation";
-import { Gift, Phone } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Gift, Phone, Trash2 } from "lucide-react";
 import { formatINR } from "@dilruba/shared/booking";
 import type { AdminCustomerDetail } from "@dilruba/shared/crm";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
@@ -15,7 +15,11 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: c, setData, error, reload } = useAdminData<AdminCustomerDetail>(`/customers/${id}`);
   const action = useAction();
-  const canWrite = useCan()("customers.write");
+  const can = useCan();
+  const canWrite = can("customers.write");
+  // Owners and managers; customers with bookings are refused by the server (history is kept).
+  const canDelete = canWrite && can("leads.all");
+  const router = useRouter();
   const [saved, setSaved] = useState(false);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -149,6 +153,22 @@ export default function CustomerDetailPage() {
             {saved && <p role="status" className="text-sm text-[#0f7a3a]">Saved.</p>}
           </form>
         </Card>
+        {canDelete && (
+          <button
+            type="button"
+            disabled={action.busy}
+            onClick={() => {
+              if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes and notes? This can't be undone.`)) return;
+              void action.run(async () => {
+                await adminFetch(`/customers/${id}`, { method: "DELETE" });
+                router.replace("/admin/customers");
+              });
+            }}
+            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand disabled:opacity-50"
+          >
+            <Trash2 className="size-4" aria-hidden /> Delete this customer
+          </button>
+        )}
         </div>
       </div>
     </>

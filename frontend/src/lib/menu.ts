@@ -1,5 +1,6 @@
 import type { CategorySlug, TravelPackage } from "@dilruba/shared/catalog";
 import type { NavIconName } from "@/components/nav-icons";
+import { collectionHref } from "./collections";
 import { packageHref } from "./packages";
 
 // The site's main menu. Destination items list their packages in a dropdown, so a new package
@@ -23,22 +24,11 @@ function destination(packages: TravelPackage[], label: string, category: Categor
   return { label, href, icon, children: [...list.slice(0, MAX_PACKAGES).map((p) => ({ label: p.title, href: packageHref(p) })), { label: all, href }] };
 }
 
-/**
- * The Umrah menu always shows these three names. Each links to the Umrah package whose title
- * matches (rename packages freely; the words below are what's looked for), or to the Umrah page.
- */
-const umrahLinks: { label: string; match: RegExp }[] = [
-  { label: "Economy Fix Departure", match: /economy/i },
-  { label: "Deluxe Fix Departure", match: /deluxe|premium/i },
-  { label: "Ramzan Umrah 2027", match: /ramzan|ramadan/i },
-];
+/** Ramzan Umrah opens the Umrah package with Ramadan/Ramzan in its title (or the Umrah page). */
+const RAMZAN = /ramzan|ramadan/i;
 
 export function buildMenu(packages: TravelPackage[]): MenuItem[] {
-  const umrah = packages.filter((p) => p.category === "umrah");
-  const umrahHref = (match: RegExp) => {
-    const p = umrah.find((x) => match.test(x.title));
-    return p ? packageHref(p) : "/packages/umrah";
-  };
+  const ramzan = packages.find((p) => p.category === "umrah" && RAMZAN.test(p.title));
 
   return [
     destination(packages, "Hajj", "hajj", "kaaba", "All Hajj packages"),
@@ -46,7 +36,14 @@ export function buildMenu(packages: TravelPackage[]): MenuItem[] {
       label: "Umrah",
       href: "/packages/umrah",
       icon: "mosque",
-      children: [...umrahLinks.map((l) => ({ label: l.label, href: umrahHref(l.match) })), { label: "All Umrah packages", href: "/packages/umrah" }],
+      // Economy and Deluxe open a page listing every package of that kind.
+      matches: ["/tours/economy-umrah", "/tours/deluxe-umrah"],
+      children: [
+        { label: "Economy Fix Departure", href: collectionHref("economy-umrah") },
+        { label: "Deluxe Fix Departure", href: collectionHref("deluxe-umrah") },
+        { label: "Ramzan Umrah 2027", href: ramzan ? packageHref(ramzan) : "/packages/umrah" },
+        { label: "All Umrah packages", href: "/packages/umrah" },
+      ],
     },
     destination(packages, "Iraq", "iraq", "shrine", "All Iraq ziyarat"),
     {
@@ -59,7 +56,17 @@ export function buildMenu(packages: TravelPackage[]): MenuItem[] {
         { label: "Palestine (Al-Aqsa)", href: "/packages/palestine" },
       ],
     },
-    destination(packages, "Turkey", "turkey", "turkey", "All Turkey tours"),
+    {
+      label: "Turkey",
+      href: "/packages/turkey",
+      icon: "turkey",
+      matches: ["/tours/turkey-group"],
+      children: [
+        { label: "Fixed Turkey Group", href: collectionHref("turkey-group") },
+        { label: "Customised Tour", href: "/custom-package?trip=Turkey" },
+        { label: "All Turkey Packages", href: "/packages/turkey" },
+      ],
+    },
     {
       label: "Holidays",
       href: "/packages",

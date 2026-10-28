@@ -18,7 +18,7 @@ export const categoryNames: Record<CategorySlug, string> = {
   domestic: "India Holidays",
 };
 
-export const packageTiers = ["Economy", "Standard", "Premium", "Seasonal"] as const;
+export const packageTiers = ["Economy", "Standard", "Deluxe", "Premium", "Seasonal"] as const;
 
 export type Hotel = { city: string; detail: string };
 export type ItineraryDay = { day: string; title: string; description: string };

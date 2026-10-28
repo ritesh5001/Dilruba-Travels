@@ -2,7 +2,7 @@ import type { AdminCustomer, AdminCustomerDetail, Paged } from "@dilruba/shared/
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
-import { currentUser, userCan } from "../../lib/auth.ts";
+import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { ensureReferralCode } from "../../services/crm.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminNote } from "./mappers.ts";
@@ -136,4 +136,24 @@ customersRouter.post("/:id/referral-code", async (req, res) => {
   if (!c) return void res.status(404).json({ ok: false, error: "Customer not found" });
   await ensureReferralCode(c.id);
   res.json(await loadCustomer(c.id));
+});
+
+/**
+ * Deletes a customer with their leads, quotes and notes (owners and managers only). Refused when
+ * they have bookings, so payment and invoice history is never lost: cancel the bookings instead.
+ */
+customersRouter.delete("/:id", requirePermission("leads.all"), async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Customer not found" });
+  const bookings = await db.selectFrom("bookings").select((eb) => eb.fn.countAll<number>().as("n")).where("customer_id", "=", id).executeTakeFirstOrThrow();
+  if (Number(bookings.n) > 0) {
+    return void res.status(409).json({
+      ok: false,
+      error: `This customer has ${bookings.n} booking${Number(bookings.n) === 1 ? "" : "s"}, so they can't be deleted (their payment history must be kept). Cancel the bookings instead.`,
+    });
+  }
+  const row = await db.deleteFrom("customers").where("id", "=", id).returning("name").executeTakeFirst();
+  if (!row) return void res.status(404).json({ ok: false, error: "Customer not found" });
+  console.info(`[customers] ${currentUser(res).name} deleted customer #${id} (${row.name})`);
+  res.json({ ok: true });
 });

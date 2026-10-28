@@ -5,7 +5,7 @@ import { Router } from "express";
 import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
-import { currentUser, userCan } from "../../lib/auth.ts";
+import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { accessToken, bookingReference, likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { addEvent, upsertCustomer } from "../../services/crm.ts";
 import { notify } from "../../services/notifications.ts";
@@ -242,4 +242,22 @@ leadsRouter.post("/:id/convert", async (req, res) => {
     return booking;
   });
   res.status(201).json({ ok: true, bookingId: booking.id });
+});
+
+/**
+ * Deletes a lead and its notes (owners and managers only). Quotes and bookings made from it are
+ * kept, just no longer linked; the customer's record notes who deleted which enquiry.
+ */
+leadsRouter.delete("/:id", requirePermission("leads.all"), async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Lead not found" });
+  const me = currentUser(res);
+  const lead = await db.transaction().execute(async (trx) => {
+    const row = await trx.deleteFrom("leads").where("id", "=", id).returning(["customer_id", "service", "package_name"]).executeTakeFirst();
+    if (row) await addEvent(trx, { customer_id: row.customer_id, author: me.name, body: `${me.name} deleted enquiry #${id} (${row.package_name ?? row.service}).` });
+    return row;
+  });
+  if (!lead) return void res.status(404).json({ ok: false, error: "Lead not found" });
+  console.info(`[leads] ${me.name} deleted lead #${id}`);
+  res.json({ ok: true });
 });
