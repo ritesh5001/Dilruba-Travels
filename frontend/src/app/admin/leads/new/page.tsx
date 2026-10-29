@@ -1,10 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { services } from "@dilruba/shared/enquiry";
-import { adminFetch, useAction } from "@/lib/admin-api";
-import { Card, ErrorBox, PageHeader } from "@/components/admin/ui";
+import type { AdminCustomerDetail } from "@dilruba/shared/crm";
+import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
+import { Card, ErrorBox, Loading, PageHeader } from "@/components/admin/ui";
 
 const sources = ["Phone call", "WhatsApp", "Walk-in", "Instagram", "Facebook", "Referral", "Repeat customer", "Other"];
 
@@ -12,10 +13,20 @@ const sources = ["Phone call", "WhatsApp", "Walk-in", "Instagram", "Facebook", "
 export default function NewLeadPage() {
   const router = useRouter();
   const action = useAction();
+  // From a customer's page ("Move to leads"): their details are filled in, and the lead joins their record.
+  const customerId = useSearchParams().get("customer");
+  const { data: customer, error } = useAdminData<AdminCustomerDetail>(customerId ? `/customers/${customerId}` : null);
+
+  if (customerId && error) return <ErrorBox message={error} />;
+  if (customerId && !customer) return <Loading />;
 
   return (
     <>
-      <PageHeader back={{ href: "/admin/leads", label: "Leads" }} title="Add a lead" subtitle="For enquiries by phone, WhatsApp or at the office." />
+      <PageHeader
+        back={customer ? { href: `/admin/customers/${customer.id}`, label: customer.name } : { href: "/admin/leads", label: "Leads" }}
+        title={customer ? `New lead for ${customer.name}` : "Add a lead"}
+        subtitle={customer ? "Their name and phone are filled in. Add what they're asking about." : "For enquiries by phone, WhatsApp or at the office."}
+      />
       {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
       <Card className="max-w-3xl">
         <form
@@ -46,19 +57,19 @@ export default function NewLeadPage() {
         >
           <div>
             <label htmlFor="nl-name" className="label">Name</label>
-            <input id="nl-name" name="name" required className="field" />
+            <input id="nl-name" name="name" required defaultValue={customer?.name} className="field" />
           </div>
           <div>
             <label htmlFor="nl-phone" className="label">Phone / WhatsApp</label>
-            <input id="nl-phone" name="phone" type="tel" required placeholder="+91 98XXX XXXXX" className="field" />
+            <input id="nl-phone" name="phone" type="tel" required placeholder="+91 98XXX XXXXX" defaultValue={customer?.phone} readOnly={!!customer} className="field read-only:bg-cream" />
           </div>
           <div>
             <label htmlFor="nl-email" className="label">Email <span className="font-normal text-muted">(optional)</span></label>
-            <input id="nl-email" name="email" type="email" className="field" />
+            <input id="nl-email" name="email" type="email" defaultValue={customer?.email ?? ""} className="field" />
           </div>
           <div>
             <label htmlFor="nl-source" className="label">How did they contact us?</label>
-            <select id="nl-source" name="source" defaultValue="Phone call" className="field appearance-none">
+            <select id="nl-source" name="source" defaultValue={customer ? "Repeat customer" : "Phone call"} className="field appearance-none">
               {sources.map((s) => <option key={s}>{s}</option>)}
             </select>
           </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Gift, Phone, Trash2 } from "lucide-react";
+import { Gift, Inbox, Phone, Trash2 } from "lucide-react";
 import { formatINR } from "@dilruba/shared/booking";
 import type { AdminCustomerDetail } from "@dilruba/shared/crm";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
@@ -44,6 +44,11 @@ export default function CustomerDetailPage() {
               <WhatsAppIcon className="size-4" /> WhatsApp
             </a>
             <a href={`tel:${c.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
+            {can("leads.write") && (
+              <Link href={`/admin/leads/new?customer=${c.id}`} className="btn btn-outline !py-2">
+                <Inbox className="size-4" aria-hidden /> Move to leads
+              </Link>
+            )}
             {canDelete && (
               <button
                 type="button"
