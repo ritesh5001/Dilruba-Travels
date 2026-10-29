@@ -1,9 +1,10 @@
 import type { AdminCustomer, AdminCustomerDetail, Paged } from "@dilruba/shared/crm";
+import { phoneSchema } from "@dilruba/shared/booking";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
-import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
+import { likePattern, normalizePhone, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { ensureReferralCode } from "../../services/crm.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminNote } from "./mappers.ts";
 
@@ -96,6 +97,31 @@ customersRouter.get("/:id", async (req, res) => {
   const customer = id && (await loadCustomer(id));
   if (!customer) return void res.status(404).json({ ok: false, error: "Customer not found" });
   res.json(customer);
+});
+
+/** Adds a customer by hand (owners and managers). One customer per phone number. */
+customersRouter.post("/", requirePermission("leads.all"), async (req, res) => {
+  const data = parseBody(
+    z.object({
+      name: z.string().trim().min(2, "Enter their name").max(80),
+      phone: phoneSchema,
+      email: z.union([z.email("Enter a valid email").trim().max(160), z.literal("")]).optional(),
+    }),
+    req.body,
+    res,
+  );
+  if (!data) return;
+  const phone = normalizePhone(data.phone);
+  const existing = await db.selectFrom("customers").select(["id", "name"]).where("phone", "=", phone).executeTakeFirst();
+  if (existing) return void res.status(409).json({ ok: false, error: `${phone} is already saved as ${existing.name}.`, id: existing.id });
+  const me = currentUser(res);
+  const row = await db
+    .insertInto("customers")
+    .values({ name: data.name, phone, email: data.email ? data.email.toLowerCase() : null })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  await db.insertInto("notes").values({ customer_id: row.id, kind: "event", body: `Customer added by ${me.name}.`, author: me.name }).execute();
+  res.status(201).json({ ok: true, id: row.id });
 });
 
 customersRouter.patch("/:id", async (req, res) => {

@@ -61,6 +61,22 @@ export default function LeadDetailPage() {
           <>
             <WhatsAppTemplates phone={lead.customer.phone} templates={leadTemplates(lead, sentQuote?.link)} />
             <a href={`tel:${lead.customer.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
+            {can("leads.all") && can("leads.write") && (
+              <button
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  if (!window.confirm(`Delete this enquiry from ${lead.customer.name}? Its notes are deleted too. This can't be undone.`)) return;
+                  void action.run(async () => {
+                    await adminFetch(`/leads/${id}`, { method: "DELETE" });
+                    router.replace("/admin/leads");
+                  });
+                }}
+                className="btn btn-outline !py-2 text-brand hover:!border-brand disabled:opacity-50"
+              >
+                <Trash2 className="size-4" aria-hidden /> Delete
+              </button>
+            )}
             {open && can("quotes.write") && (
               <Link href={`/admin/quotes/new?lead=${lead.id}`} className="btn btn-outline !py-2">
                 <FilePlus2 className="size-4" aria-hidden /> New quote
@@ -166,22 +182,6 @@ export default function LeadDetailPage() {
                 ))}
               </ul>
             </Card>
-          )}
-          {can("leads.all") && can("leads.write") && (
-            <button
-              type="button"
-              disabled={action.busy}
-              onClick={() => {
-                if (!window.confirm(`Delete this enquiry from ${lead.customer.name}? Its notes are deleted too. This can't be undone.`)) return;
-                void action.run(async () => {
-                  await adminFetch(`/leads/${id}`, { method: "DELETE" });
-                  router.replace("/admin/leads");
-                });
-              }}
-              className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand disabled:opacity-50"
-            >
-              <Trash2 className="size-4" aria-hidden /> Delete this lead
-            </button>
           )}
         </div>
       </div>

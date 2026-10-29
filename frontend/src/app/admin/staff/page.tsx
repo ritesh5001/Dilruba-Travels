@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, Pencil, Plus } from "lucide-react";
-import { staffRoleLabels, staffRoleNames, staffRoles, type StaffUser } from "@dilruba/shared/ops";
+import { effectiveRole, staffRoleLabels, staffRoleNames, staffRoles, type StaffUser } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { Badge, Card, Empty, ErrorBox, Loading, PageHeader, formatDate } from "@/components/admin/ui";
 
@@ -47,7 +47,7 @@ export default function StaffPage() {
               <li key={u.id} className={`flex items-center justify-between gap-3 p-4 ${u.active ? "" : "opacity-60"}`}>
                 <div className="min-w-0">
                   <p className="font-medium">{u.name} {!u.active && <Badge color="red">Switched off</Badge>}</p>
-                  <p className="truncate text-sm text-muted">{u.email} · {staffRoleNames[u.role]} · {u.lastLoginAt ? `last login ${formatDate(u.lastLoginAt, true)}` : "never logged in"}</p>
+                  <p className="truncate text-sm text-muted">{u.email} · {staffRoleNames[effectiveRole(u.role) ?? "viewer"]} · {u.lastLoginAt ? `last login ${formatDate(u.lastLoginAt, true)}` : "never logged in"}</p>
                 </div>
                 <button type="button" onClick={() => setEditing(u.id)} className="btn btn-outline !px-3 !py-1.5 text-sm"><Pencil className="size-4" aria-hidden /> Edit</button>
               </li>

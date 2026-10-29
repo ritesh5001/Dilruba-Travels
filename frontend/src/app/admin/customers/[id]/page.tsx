@@ -44,6 +44,27 @@ export default function CustomerDetailPage() {
               <WhatsAppIcon className="size-4" /> WhatsApp
             </a>
             <a href={`tel:${c.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
+            {canDelete && (
+              <button
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  // Bookings carry payment history, so those customers are kept (the server checks too).
+                  if (c.bookings.length > 0) {
+                    action.setError(`${c.name} has ${c.bookings.length} booking${c.bookings.length === 1 ? "" : "s"}, so they can't be deleted (their payment history must be kept). Cancel the bookings instead.`);
+                    return;
+                  }
+                  if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes and notes? This can't be undone.`)) return;
+                  void action.run(async () => {
+                    await adminFetch(`/customers/${id}`, { method: "DELETE" });
+                    router.replace("/admin/customers");
+                  });
+                }}
+                className="btn btn-outline !py-2 text-brand hover:!border-brand disabled:opacity-50"
+              >
+                <Trash2 className="size-4" aria-hidden /> Delete
+              </button>
+            )}
           </>
         }
       />
@@ -153,22 +174,6 @@ export default function CustomerDetailPage() {
             {saved && <p role="status" className="text-sm text-[#0f7a3a]">Saved.</p>}
           </form>
         </Card>
-        {canDelete && (
-          <button
-            type="button"
-            disabled={action.busy}
-            onClick={() => {
-              if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes and notes? This can't be undone.`)) return;
-              void action.run(async () => {
-                await adminFetch(`/customers/${id}`, { method: "DELETE" });
-                router.replace("/admin/customers");
-              });
-            }}
-            className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand disabled:opacity-50"
-          >
-            <Trash2 className="size-4" aria-hidden /> Delete this customer
-          </button>
-        )}
         </div>
       </div>
     </>

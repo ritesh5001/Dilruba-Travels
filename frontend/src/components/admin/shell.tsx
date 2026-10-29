@@ -21,7 +21,7 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
-import { can, staffRoleNames, type Me, type Permission } from "@dilruba/shared/ops";
+import { can, effectiveRole, staffRoleNames, type Me, type Permission } from "@dilruba/shared/ops";
 import { ApiError, adminFetch, clearAdminCache } from "@/lib/admin-api";
 import { NotificationBell } from "./notification-bell";
 
@@ -121,7 +121,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </nav>
         <div className="hidden border-t border-line px-5 py-4 lg:block">
           <p className="truncate text-sm font-medium" title={me?.email ?? ""}>{me?.name ?? " "}</p>
-          <p className="truncate text-xs text-muted">{me ? staffRoleNames[me.role] : " "}</p>
+          <p className="truncate text-xs text-muted">{me ? staffRoleNames[effectiveRole(me.role) ?? "viewer"] : " "}</p>
           <button type="button" onClick={logout} className="mt-2 inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
             <LogOut className="size-4" aria-hidden /> Log out
           </button>

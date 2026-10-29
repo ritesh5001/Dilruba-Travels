@@ -59,8 +59,16 @@ export const rolePermissions: Record<StaffRole, readonly Permission[]> = {
   viewer: ["leads.read", "leads.all", "customers.read", "bookings.read"],
 };
 
-export function can(role: StaffRole | undefined | null, permission: Permission) {
-  return !!role && (rolePermissions[role] ?? []).includes(permission);
+/** Logins from before the role system were "staff"; they have a Manager's access. */
+export function effectiveRole(role: string | undefined | null): StaffRole | null {
+  if (!role) return null;
+  if (role === "staff") return "manager";
+  return (staffRoles as readonly string[]).includes(role) ? (role as StaffRole) : null;
+}
+
+export function can(role: StaffRole | string | undefined | null, permission: Permission) {
+  const r = effectiveRole(role);
+  return !!r && rolePermissions[r].includes(permission);
 }
 
 export const visaStatuses = ["not_started", "documents_pending", "submitted", "approved", "rejected"] as const;
