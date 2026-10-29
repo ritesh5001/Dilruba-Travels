@@ -36,6 +36,15 @@ export const collections: Collection[] = [
     includes: (p) => p.tier === "Deluxe" || p.tier === "Premium" || /deluxe|premium/i.test(p.title),
   },
   {
+    slug: "ramzan-umrah",
+    title: "Ramzan Umrah 2027",
+    menuLabel: "Ramzan Umrah 2027",
+    category: "umrah",
+    image: "kaabaAerial",
+    intro: "Spend the blessed days of Ramzan in Makkah and Madinah, with iftar, suhoor and taraweeh close to the Haram. Seats fill early.",
+    includes: (p) => /ramzan|ramadan/i.test(p.title),
+  },
+  {
     slug: "turkey-group",
     title: "Fixed Turkey Group Tours",
     menuLabel: "Fixed Turkey Group",

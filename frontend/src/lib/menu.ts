@@ -24,24 +24,19 @@ function destination(packages: TravelPackage[], label: string, category: Categor
   return { label, href, icon, children: [...list.slice(0, MAX_PACKAGES).map((p) => ({ label: p.title, href: packageHref(p) })), { label: all, href }] };
 }
 
-/** Ramzan Umrah opens the Umrah package with Ramadan/Ramzan in its title (or the Umrah page). */
-const RAMZAN = /ramzan|ramadan/i;
-
 export function buildMenu(packages: TravelPackage[]): MenuItem[] {
-  const ramzan = packages.find((p) => p.category === "umrah" && RAMZAN.test(p.title));
-
   return [
     destination(packages, "Hajj", "hajj", "kaaba", "All Hajj packages"),
     {
       label: "Umrah",
       href: "/packages/umrah",
       icon: "mosque",
-      // Economy and Deluxe open a page listing every package of that kind.
-      matches: ["/tours/economy-umrah", "/tours/deluxe-umrah"],
+      // Economy, Deluxe and Ramzan open a page listing every package of that kind.
+      matches: ["/tours/economy-umrah", "/tours/deluxe-umrah", "/tours/ramzan-umrah"],
       children: [
         { label: "Economy Fix Departure", href: collectionHref("economy-umrah") },
         { label: "Deluxe Fix Departure", href: collectionHref("deluxe-umrah") },
-        { label: "Ramzan Umrah 2027", href: ramzan ? packageHref(ramzan) : "/packages/umrah" },
+        { label: "Ramzan Umrah 2027", href: collectionHref("ramzan-umrah") },
         { label: "All Umrah packages", href: "/packages/umrah" },
       ],
     },
