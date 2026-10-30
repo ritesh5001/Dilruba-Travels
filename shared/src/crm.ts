@@ -41,7 +41,7 @@ export type AdminPayment = {
   provider: string;
   method: string | null;
   amount: number;
-  status: "created" | "paid" | "failed";
+  status: "created" | "paid" | "failed" | "refunded";
   note: string | null;
   providerPaymentId: string | null;
   createdAt: string;
@@ -59,6 +59,8 @@ export type AdminBooking = {
   totalAmount: number | null;
   depositAmount: number | null;
   amountPaid: number;
+  /** Given back after a cancellation; amountPaid still shows what the customer paid. */
+  refundedAmount: number;
   tcsAmount: number;
   departure: { id: number; title: string; startDate: string } | null;
   createdAt: string;

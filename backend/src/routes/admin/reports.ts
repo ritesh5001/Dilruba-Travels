@@ -69,12 +69,12 @@ reportsRouter.get("/", requireReports, async (req, res) => {
       .groupBy(sql`coalesce(users.name, 'Unassigned')`)
       .orderBy("leads", "desc")
       .execute(),
-    // Money received per month over the last 12 months, whatever the range.
+    // Money received per month over the last 12 months, whatever the range (refunds taken off).
     db
       .selectFrom("payments")
       .select(month.as("month"))
-      .select((eb) => eb.fn.sum<number>("amount").as("received"))
-      .where("status", "=", "paid")
+      .select((eb) => eb.fn.sum<number>(sql<number>`case when status = 'refunded' then -amount else amount end`).as("received"))
+      .where("status", "in", ["paid", "refunded"])
       .where("paid_at", ">=", sql<Date>`date_trunc('month', now() at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata' - interval '11 months'`)
       .groupBy(month)
       .execute(),
@@ -185,7 +185,7 @@ async function audience(query: Record<string, unknown>): Promise<AudienceRow[]> 
           .select((s) => [
             s.fn.countAll<number>().as("bookings"),
             s.fn.max("created_at").as("last_at"),
-            s.fn.sum<number>("amount_paid").as("paid"),
+            s.fn.sum<number>(s("amount_paid", "-", s.ref("refunded_amount"))).as("paid"),
             sql<string>`(array_agg(package_title order by created_at desc))[1]`.as("last_trip"),
             sql<string>`(array_agg(travel_month order by created_at desc))[1]`.as("last_month"),
           ])
@@ -283,7 +283,7 @@ reportsRouter.get("/export/bookings.csv", requireReports, async (_req, res) => {
   csv(
     res,
     "bookings",
-    ["Reference", "Created", "Customer", "Phone", "Email", "Package", "Departure", "Travel month", "Adults", "Children", "Status", "Total (₹)", "TCS (₹)", "Paid (₹)", "Balance (₹)", "Costs (₹)", "Margin (₹)", "Invoice"],
+    ["Reference", "Created", "Customer", "Phone", "Email", "Package", "Departure", "Travel month", "Adults", "Children", "Status", "Total (₹)", "TCS (₹)", "Paid (₹)", "Refunded (₹)", "Balance (₹)", "Costs (₹)", "Margin (₹)", "Invoice"],
     rows.map((r) => {
       const costs = Number(r.costs ?? 0);
       return [
@@ -301,7 +301,8 @@ reportsRouter.get("/export/bookings.csv", requireReports, async (_req, res) => {
         rupees(r.total_amount),
         rupees(r.tcs_amount),
         rupees(r.amount_paid),
-        r.total_amount === null ? "" : rupees(Math.max(0, r.total_amount + r.tcs_amount - r.amount_paid)),
+        rupees(r.refunded_amount),
+        r.total_amount === null || r.status === "cancelled" ? "" : rupees(Math.max(0, r.total_amount + r.tcs_amount - r.amount_paid)),
         rupees(costs),
         r.total_amount === null ? "" : rupees(r.total_amount - costs),
         r.invoice_number,
@@ -317,7 +318,7 @@ reportsRouter.get("/export/payments.csv", requireReports, async (_req, res) => {
     .innerJoin("customers", "customers.id", "bookings.customer_id")
     .selectAll("payments")
     .select(["bookings.reference", "bookings.invoice_number", "customers.name"])
-    .where("payments.status", "=", "paid")
+    .where("payments.status", "in", ["paid", "refunded"])
     .orderBy("payments.paid_at", "desc")
     .execute();
   csv(
@@ -329,8 +330,9 @@ reportsRouter.get("/export/payments.csv", requireReports, async (_req, res) => {
       r.reference,
       r.invoice_number,
       r.name,
-      rupees(r.amount),
-      r.provider === "manual" ? (paymentMethodLabels[r.method as PaymentMethod] ?? r.method) : `Online (${r.method ?? r.provider})`,
+      // Refunds are negative, so the column adds up to what was actually kept.
+      rupees(r.status === "refunded" ? -r.amount : r.amount),
+      `${r.status === "refunded" ? "Refund · " : ""}${r.provider === "manual" ? (paymentMethodLabels[r.method as PaymentMethod] ?? r.method) : `Online (${r.method ?? r.provider})`}`,
       r.provider_payment_id,
       r.note,
     ]),

@@ -85,6 +85,8 @@ export type PublicBooking = {
   /** TCS charged on top of the total (overseas packages). */
   tcsAmount: number;
   amountPaid: number;
+  /** Given back after a cancellation. */
+  refundedAmount: number;
   departure: { title: string; startDate: string; endDate: string | null } | null;
   instalments: { label: string; dueDate: string; amount: number; state: "paid" | "part_paid" | "due" | "overdue" }[];
   /** What "Pay now" charges: the rest of the deposit, or the balance once the deposit is in. */

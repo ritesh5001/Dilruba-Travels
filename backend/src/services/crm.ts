@@ -88,6 +88,7 @@ export function toPublicBooking(b: Booking, c: Customer, payments: Payment[], ex
     depositAmount: b.deposit_amount,
     tcsAmount: b.tcs_amount,
     amountPaid: b.amount_paid,
+    refundedAmount: b.refunded_amount,
     departure: extra.departure ? { title: extra.departure.title, startDate: extra.departure.start_date, endDate: extra.departure.end_date } : null,
     instalments: instalmentStates(extra.instalments, b.amount_paid).map(({ label, dueDate, amount, state }) => ({ label, dueDate, amount, state })),
     dueNow: dueNow(b, extra.instalments),

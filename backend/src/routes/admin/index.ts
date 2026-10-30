@@ -118,8 +118,8 @@ adminRouter.get("/dashboard", async (_req, res) => {
       .executeTakeFirstOrThrow(),
     db
       .selectFrom("payments")
-      .select((eb) => eb.fn.coalesce(eb.fn.sum<number>("amount"), eb.val(0)).as("total"))
-      .where("status", "=", "paid")
+      .select((eb) => eb.fn.coalesce(eb.fn.sum<number>(sql<number>`case when status = 'refunded' then -amount else amount end`), eb.val(0)).as("total"))
+      .where("status", "in", ["paid", "refunded"])
       .where("paid_at", ">=", monthStart)
       .executeTakeFirstOrThrow(),
     // Sales see only their own leads; roles without lead access see none.

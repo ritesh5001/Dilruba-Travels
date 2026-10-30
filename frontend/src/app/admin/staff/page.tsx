@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, Pencil, Plus } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { effectiveRole, staffRoleLabels, staffRoleNames, staffRoles, type StaffUser } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { Badge, Card, Empty, ErrorBox, Loading, PageHeader, formatDate } from "@/components/admin/ui";
@@ -10,6 +10,18 @@ export default function StaffPage() {
   const { data, setData, error, reload } = useAdminData<StaffUser[]>("/staff");
   const [editing, setEditing] = useState<number | "new" | null>(null);
   const action = useAction();
+  const [flash, setFlash] = useState<string | null>(null);
+
+  async function remove(u: StaffUser) {
+    if (!window.confirm(`Delete ${u.name}'s login? Their open leads become unassigned. Their notes and history stay. To keep the account for later, switch it off instead.`)) return;
+    setFlash(null);
+    const done = await action.run(() => adminFetch<{ unassignedLeads: number }>(`/staff/${u.id}`, { method: "DELETE" }));
+    if (done && data) {
+      setData(data.filter((x) => x.id !== u.id));
+      const n = done.unassignedLeads;
+      setFlash(`${u.name} deleted.${n ? ` ${n} open lead${n === 1 ? " is" : "s are"} now unassigned: assign ${n === 1 ? "it" : "them"} from Leads.` : ""}`);
+    }
+  }
 
   async function save(body: unknown, id?: number) {
     const saved = await action.run(() => adminFetch<StaffUser>(id ? `/staff/${id}` : "/staff", { method: id ? "PUT" : "POST", body }));
@@ -27,6 +39,7 @@ export default function StaffPage() {
         actions={editing === null && <button type="button" onClick={() => setEditing("new")} className="btn btn-primary !py-2"><Plus className="size-4" aria-hidden /> Add staff</button>}
       />
       {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
+      {flash && <p role="status" className="mb-4 rounded-xl bg-[#25d366]/10 px-4 py-3 text-sm font-medium text-[#0f7a3a]">{flash}</p>}
       {editing === "new" && (
         <Card title="New staff login" className="mb-6 max-w-2xl">
           <StaffForm busy={action.busy} onSave={(b) => save(b)} onCancel={() => setEditing(null)} />
@@ -49,7 +62,12 @@ export default function StaffPage() {
                   <p className="font-medium">{u.name} {!u.active && <Badge color="red">Switched off</Badge>}</p>
                   <p className="truncate text-sm text-muted">{u.email} · {staffRoleNames[effectiveRole(u.role) ?? "viewer"]} · {u.lastLoginAt ? `last login ${formatDate(u.lastLoginAt, true)}` : "never logged in"}</p>
                 </div>
-                <button type="button" onClick={() => setEditing(u.id)} className="btn btn-outline !px-3 !py-1.5 text-sm"><Pencil className="size-4" aria-hidden /> Edit</button>
+                <div className="flex shrink-0 gap-2">
+                  <button type="button" onClick={() => setEditing(u.id)} className="btn btn-outline !px-3 !py-1.5 text-sm"><Pencil className="size-4" aria-hidden /> Edit</button>
+                  <button type="button" disabled={action.busy} onClick={() => void remove(u)} aria-label={`Delete ${u.name}`} className="btn btn-outline !px-3 !py-1.5 text-sm text-brand hover:!border-brand disabled:opacity-50">
+                    <Trash2 className="size-4" aria-hidden /> <span className="hidden sm:inline">Delete</span>
+                  </button>
+                </div>
               </li>
             ),
           )}

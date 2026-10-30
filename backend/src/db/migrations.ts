@@ -1,6 +1,6 @@
 import { type Kysely, sql } from "kysely";
 import { type Migration, type MigrationProvider, Migrator } from "kysely/migration";
-import { seedPackages } from "./seed-packages.ts";
+import { addedPackages, seedPackages, type SeedPackage } from "./seed-packages.ts";
 
 // Migrations run in key order. Never edit one that has shipped; add a new one instead.
 const migrations: Record<string, Migration> = {
@@ -102,6 +102,36 @@ migrations["0002_list_sort_indexes"] = {
   },
 };
 
+function packageRow(p: SeedPackage, sortOrder: number) {
+  const toUrl = (name: string) => `/images/${name}.webp`;
+  return {
+    category: p.category,
+    slug: p.slug,
+    title: p.title,
+    summary: p.summary,
+    days: p.days,
+    nights: p.nights,
+    tier: p.tier ?? null,
+    starting_price: p.startingPrice,
+    sharing: p.sharing ?? null,
+    route_from: p.route[0],
+    route_to: p.route[1],
+    image: toUrl(p.image),
+    featured: p.featured ?? false,
+    published: true,
+    sort_order: sortOrder,
+    places: JSON.stringify(p.places),
+    gallery: JSON.stringify((p.gallery ?? []).map(toUrl)),
+    highlights: JSON.stringify(p.highlights),
+    hotels: JSON.stringify(p.hotels ?? []),
+    itinerary: JSON.stringify(p.itinerary),
+    inclusions: JSON.stringify(p.inclusions),
+    exclusions: JSON.stringify(p.exclusions),
+    documents: JSON.stringify(p.documents),
+    faqs: JSON.stringify(p.faqs ?? []),
+  };
+}
+
 migrations["0003_packages_and_media"] = {
   async up(db: Kysely<any>) {
     await db.schema
@@ -149,33 +179,7 @@ migrations["0003_packages_and_media"] = {
       .execute();
 
     // Copy the catalogue that used to be hard-coded in the website, in its original order.
-    const toUrl = (name: string) => `/images/${name}.webp`;
-    const rows = seedPackages.map((p, i) => ({
-      category: p.category,
-      slug: p.slug,
-      title: p.title,
-      summary: p.summary,
-      days: p.days,
-      nights: p.nights,
-      tier: p.tier ?? null,
-      starting_price: p.startingPrice,
-      sharing: p.sharing ?? null,
-      route_from: p.route[0],
-      route_to: p.route[1],
-      image: toUrl(p.image),
-      featured: p.featured ?? false,
-      published: true,
-      sort_order: (i + 1) * 10,
-      places: JSON.stringify(p.places),
-      gallery: JSON.stringify((p.gallery ?? []).map(toUrl)),
-      highlights: JSON.stringify(p.highlights),
-      hotels: JSON.stringify(p.hotels ?? []),
-      itinerary: JSON.stringify(p.itinerary),
-      inclusions: JSON.stringify(p.inclusions),
-      exclusions: JSON.stringify(p.exclusions),
-      documents: JSON.stringify(p.documents),
-      faqs: JSON.stringify(p.faqs ?? []),
-    }));
+    const rows = seedPackages.map((p, i) => packageRow(p, (i + 1) * 10));
     if (rows.length) await db.insertInto("packages").values(rows).execute();
   },
 };
@@ -457,6 +461,21 @@ migrations["0006_roles_suppliers_notifications"] = {
 
     // So a due follow-up alerts its owner once, not every half hour.
     await db.schema.alterTable("leads").addColumn("follow_up_notified_at", "timestamptz").execute();
+  },
+};
+
+migrations["0007_refunds_and_more_packages"] = {
+  async up(db: Kysely<any>) {
+    // Money given back on a cancelled booking (paise). amount_paid stays what the customer paid.
+    await db.schema.alterTable("bookings").addColumn("refunded_amount", "bigint", (c) => c.notNull().defaultTo(0)).execute();
+    await db.schema.alterTable("bookings").addCheckConstraint("bookings_refund_within_paid", sql`refunded_amount between 0 and amount_paid`).execute();
+
+    // Packages for every menu group (Ramzan Umrah 2027, Economy and Deluxe fixed departures,
+    // Turkey fixed group). A slug the team already uses is left alone; new ones go after the rest.
+    const last = await db.selectFrom("packages").select((eb) => eb.fn.max("sort_order").as("n")).executeTakeFirst();
+    const base = Number(last?.n ?? 0);
+    const rows = addedPackages.map((p, i) => packageRow(p, base + (i + 1) * 10));
+    await db.insertInto("packages").values(rows).onConflict((oc) => oc.columns(["category", "slug"]).doNothing()).execute();
   },
 };
 

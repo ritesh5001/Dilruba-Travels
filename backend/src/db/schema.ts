@@ -59,6 +59,8 @@ export interface BookingTable {
   total_amount: number | null;
   deposit_amount: number | null;
   amount_paid: ColumnType<number, number | undefined, number>;
+  /** Money given back after a cancellation (paise); amount_paid stays what the customer paid. */
+  refunded_amount: ColumnType<number, number | undefined, number>;
   /** Tax collected at source on overseas packages, charged on top of total_amount (paise). */
   tcs_amount: ColumnType<number, number | undefined, number>;
   departure_id: number | null;
@@ -79,7 +81,8 @@ export interface PaymentTable {
   provider_payment_id: string | null;
   method: string | null;
   amount: number;
-  status: ColumnType<"created" | "paid" | "failed", "created" | "paid" | "failed", "created" | "paid" | "failed">;
+  /** "refunded" rows are money given back (amount is positive; paid_at is when it was sent). */
+  status: ColumnType<"created" | "paid" | "failed" | "refunded", "created" | "paid" | "failed" | "refunded", "created" | "paid" | "failed" | "refunded">;
   note: string | null;
   created_at: CreatedAt;
   paid_at: Date | null;

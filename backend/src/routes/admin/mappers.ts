@@ -73,6 +73,7 @@ export function toAdminBooking(r: Booking & CustomerCols & { departure_title: st
     totalAmount: r.total_amount,
     depositAmount: r.deposit_amount,
     amountPaid: r.amount_paid,
+    refundedAmount: r.refunded_amount,
     tcsAmount: r.tcs_amount,
     departure: r.departure_id && r.departure_title && r.departure_start ? { id: r.departure_id, title: r.departure_title, startDate: r.departure_start } : null,
     createdAt: iso(r.created_at),

@@ -257,7 +257,12 @@ export function BookingStatus() {
                 <div className="flex justify-between"><dt className="text-muted">Booking deposit</dt><dd className="font-semibold">{formatINR(booking.depositAmount)}</dd></div>
               )}
               <div className="flex justify-between"><dt className="text-muted">Paid</dt><dd className="font-semibold">{formatINR(booking.amountPaid)}</dd></div>
-              <div className="flex justify-between border-t border-line pt-3 text-base"><dt>Balance</dt><dd className="font-semibold">{formatINR(booking.balance)}</dd></div>
+              {booking.refundedAmount > 0 && (
+                <div className="flex justify-between"><dt className="text-muted">Refunded to you</dt><dd className="font-semibold">{formatINR(booking.refundedAmount)}</dd></div>
+              )}
+              {booking.status !== "cancelled" && (
+                <div className="flex justify-between border-t border-line pt-3 text-base"><dt>Balance</dt><dd className="font-semibold">{formatINR(booking.balance)}</dd></div>
+              )}
             </dl>
 
             {booking.dueNow > 0 && booking.onlinePaymentsEnabled && (

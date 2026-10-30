@@ -7,7 +7,7 @@ import { sql } from "kysely";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { sendEmail } from "../../email/send.ts";
-import { bookingLink, feedbackLink, instalmentReminderEmail, paymentRequestEmail } from "../../email/templates.ts";
+import { bookingLink, feedbackLink, instalmentReminderEmail, paymentRequestEmail, refundEmail } from "../../email/templates.ts";
 import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { paymentProvider } from "../../payments/index.ts";
@@ -183,6 +183,9 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
     changed(data.departureId, before.departure_id);
   if (priceChanged && !userCan(res, "payments.write")) return void res.status(403).json({ ok: false, error: "Only accounts or a manager can change prices" });
   if (tripChanged && !userCan(res, "bookings.write")) return void res.status(403).json({ ok: false, error: "Only operations or a manager can change the trip details or status" });
+  if (before.refunded_amount > 0 && data.status !== undefined && data.status !== "cancelled") {
+    return void res.status(400).json({ ok: false, error: `${formatINR(before.refunded_amount)} has been refunded on this booking, so it stays cancelled. Make a new booking instead.` });
+  }
 
   const total = data.totalAmount === undefined ? before.total_amount : toPaise(data.totalAmount)!;
   const deposit = data.depositAmount === undefined ? before.deposit_amount : toPaise(data.depositAmount)!;
@@ -289,6 +292,60 @@ bookingsAdminRouter.post("/:id/payments", canTakePayments, async (req, res) => {
   if (!id || !data) return;
   const booking = await recordManualPayment(id, { ...data, amount: Math.round(data.amount * 100), author: currentUser(res).name });
   if (!booking) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  await respondWithBooking(res, id);
+});
+
+/** Money given back after a cancellation. "Paid" stays what the customer paid; the refund is kept beside it. */
+bookingsAdminRouter.post("/:id/refunds", canTakePayments, async (req, res) => {
+  const id = parseId(req.params.id);
+  const data = parseBody(
+    z.object({
+      amount: z.coerce.number().positive("Enter the amount refunded").max(10_000_000),
+      method: z.enum(paymentMethods),
+      note: z.string().trim().max(500).optional(),
+      notifyCustomer: z.boolean().default(true),
+    }),
+    req.body,
+    res,
+  );
+  if (!id || !data) return;
+  const me = currentUser(res);
+  const amount = Math.round(data.amount * 100);
+  const result = await db.transaction().execute(async (trx) => {
+    const b = await trx.selectFrom("bookings").selectAll().where("id", "=", id).forUpdate().executeTakeFirst();
+    if (!b) return { ok: false, status: 404, message: "Booking not found" } as const;
+    if (b.status !== "cancelled") return { ok: false, status: 400, message: "Cancel the booking first (Status), then record the refund." } as const;
+    const refundable = b.amount_paid - b.refunded_amount;
+    if (amount > refundable) {
+      return { ok: false, status: 400, message: refundable > 0 ? `You can refund at most ${formatINR(refundable)} (paid ${formatINR(b.amount_paid)}, already refunded ${formatINR(b.refunded_amount)}).` : "Everything paid on this booking has already been refunded." } as const;
+    }
+    await trx
+      .insertInto("payments")
+      .values({ booking_id: id, provider: "manual", method: data.method, amount, status: "refunded", note: data.note ?? null, paid_at: new Date() })
+      .execute();
+    const updated = await trx
+      .updateTable("bookings")
+      .set({ refunded_amount: b.refunded_amount + amount, updated_at: new Date() })
+      .where("id", "=", id)
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    const kept = updated.amount_paid - updated.refunded_amount;
+    await addEvent(trx, {
+      booking_id: id,
+      customer_id: b.customer_id,
+      author: me.name,
+      body: `Refund of ${formatINR(amount)} recorded (${paymentMethodLabels[data.method]})${data.note ? `: ${data.note}` : ""}. ${kept > 0 ? `${formatINR(kept)} kept as cancellation charges.` : "Fully refunded."}`,
+    });
+    return { ok: true, booking: updated } as const;
+  });
+  if (!result.ok) return void res.status(result.status).json({ ok: false, error: result.message });
+  if (data.notifyCustomer) {
+    const customer = await db.selectFrom("customers").selectAll().where("id", "=", result.booking.customer_id).executeTakeFirstOrThrow();
+    if (customer.email) {
+      const sent = await sendEmail(refundEmail(result.booking, customer, amount, paymentMethodLabels[data.method]));
+      await addEvent(db, { booking_id: id, customer_id: customer.id, body: sent ? `Refund confirmation emailed to ${customer.email}.` : `Refund email to ${customer.email} FAILED to send.` });
+    }
+  }
   await respondWithBooking(res, id);
 });
 

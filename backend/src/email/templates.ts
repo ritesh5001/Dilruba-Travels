@@ -139,6 +139,23 @@ export function paymentReceivedEmail(b: Booking, c: Customer, amount: number) {
   });
 }
 
+export function refundEmail(b: Booking, c: Customer, amount: number, method: string) {
+  return build({
+    to: c.email!,
+    subject: `Refund of ${formatINR(amount)} for ${b.reference}`,
+    heading: "Your refund has been sent",
+    intro: `We've sent a refund of <strong>${e(formatINR(amount))}</strong> for your cancelled booking by ${e(method)}. Depending on your bank it can take a few working days to show in your account.`,
+    rows: [
+      ["Booking", b.reference],
+      ["Package", b.package_title],
+      ["Paid", formatINR(b.amount_paid)],
+      ["Refunded in total", formatINR(b.refunded_amount)],
+    ],
+    button: { label: "View your booking", href: bookingLink(b) },
+    footer: helpLine,
+  });
+}
+
 export function bookingStatusEmail(b: Booking, c: Customer, status: BookingStatus) {
   const copy: Partial<Record<BookingStatus, { subject: string; heading: string; intro: string }>> = {
     confirmed: {

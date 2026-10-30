@@ -43,7 +43,7 @@ customersRouter.get("/", async (req, res) => {
         eb
           .selectFrom("bookings")
           .whereRef("bookings.customer_id", "=", "customers.id")
-          .select((s) => s.fn.coalesce(s.fn.sum<number>("bookings.amount_paid"), s.val(0)).as("n"))
+          .select((s) => s.fn.coalesce(s.fn.sum<number>(s("bookings.amount_paid", "-", s.ref("bookings.refunded_amount"))), s.val(0)).as("n"))
           .as("total_paid"),
       ])
       .orderBy("customers.updated_at", "desc")

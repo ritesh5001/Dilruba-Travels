@@ -32,6 +32,9 @@ export default function BookingDetailPage() {
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!b) return <Loading />;
+  const cancelled = b.status === "cancelled";
+  // What can still be given back after a cancellation.
+  const refundable = b.amountPaid - b.refundedAmount;
 
   async function mutate(path: string, method: string, body?: unknown, message?: string) {
     setFlash(null);
@@ -73,7 +76,14 @@ export default function BookingDetailPage() {
               <Field label="Total">{formatINR(b.totalAmount)}{b.tcsAmount > 0 && <span className="block text-xs font-normal text-muted">+ {formatINR(b.tcsAmount)} TCS</span>}</Field>
               <Field label="Deposit">{formatINR(b.depositAmount)}</Field>
               <Field label="Paid">{formatINR(b.amountPaid)}</Field>
-              <Field label="Balance">{b.totalAmount === null ? "—" : formatINR(Math.max(0, b.totalAmount + b.tcsAmount - b.amountPaid))}</Field>
+              {cancelled ? (
+                <Field label="Refunded">
+                  {formatINR(b.refundedAmount)}
+                  {b.amountPaid > 0 && <span className="block text-xs font-normal text-muted">{refundable > 0 ? `${formatINR(refundable)} kept so far` : "Fully refunded"}</span>}
+                </Field>
+              ) : (
+                <Field label="Balance">{b.totalAmount === null ? "—" : formatINR(Math.max(0, b.totalAmount + b.tcsAmount - b.amountPaid))}</Field>
+              )}
             </div>
             {b.payments.length === 0 ? (
               <Empty>No payments yet.</Empty>
@@ -90,21 +100,25 @@ export default function BookingDetailPage() {
                   </thead>
                   <tbody className="divide-y divide-line">
                     {b.payments.map((p) => (
-                      <tr key={p.id} className={p.status === "failed" ? "text-muted line-through" : ""}>
+                      <tr key={p.id} className={p.status === "failed" ? "text-muted line-through" : p.status === "refunded" ? "text-brand" : ""}>
                         <td className="whitespace-nowrap py-2.5 pr-3">{formatDate(p.paidAt ?? p.createdAt, true)}</td>
                         <td className="py-2.5 pr-3">
+                          {p.status === "refunded" && "Refund · "}
                           {p.provider === "manual" ? paymentMethodLabels[p.method as keyof typeof paymentMethodLabels] ?? p.method : `Online (${p.method ?? p.provider})`}
                           {p.status === "failed" && " · failed"}
                         </td>
                         <td className="py-2.5 pr-3 text-muted">{p.note ?? p.providerPaymentId ?? "—"}</td>
-                        <td className="whitespace-nowrap py-2.5 text-right font-semibold">{formatINR(p.amount)}</td>
+                        <td className="whitespace-nowrap py-2.5 text-right font-semibold">{p.status === "refunded" ? `− ${formatINR(p.amount)}` : formatINR(p.amount)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-            {can("payments.write") && <RecordPayment busy={action.busy} onSave={(body) => mutate("/payments", "POST", body, "Payment recorded.")} />}
+            {can("payments.write") && !cancelled && <RecordPayment busy={action.busy} onSave={(body) => mutate("/payments", "POST", body, "Payment recorded.")} />}
+            {can("payments.write") && cancelled && refundable > 0 && (
+              <RecordRefund key={b.refundedAmount} refundable={refundable} hasEmail={!!b.customer.email} busy={action.busy} onSave={(body) => mutate("/refunds", "POST", body, "Refund recorded.")} />
+            )}
           </Card>
 
           <InstalmentsCard key={`plan-${b.instalments.map((i) => i.id).join()}`} b={b} busy={action.busy} mutate={mutate} />
@@ -307,6 +321,62 @@ function RecordPayment({ busy, onSave }: { busy: boolean; onSave: (body: unknown
   );
 }
 
+function RecordRefund({ refundable, hasEmail, busy, onSave }: { refundable: number; hasEmail: boolean; busy: boolean; onSave: (body: unknown) => Promise<boolean> }) {
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <div className="mt-4 rounded-xl border border-line p-4">
+        <p className="text-sm">This booking is cancelled. Record what you give back to the customer; whatever isn&apos;t refunded counts as cancellation charges.</p>
+        <button type="button" onClick={() => setOpen(true)} className="btn btn-outline mt-3 !py-2">Record a refund</button>
+      </div>
+    );
+  }
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        const ok = await onSave({
+          amount: Number(f.get("amount")),
+          method: f.get("method"),
+          note: (f.get("note") as string) || undefined,
+          notifyCustomer: f.get("notify") === "on",
+        });
+        if (ok) setOpen(false);
+      }}
+      className="mt-4 grid gap-3 rounded-xl border border-line p-4 sm:grid-cols-2"
+    >
+      <div>
+        <label htmlFor="rf-amount" className="label">Refund amount (₹)</label>
+        <input id="rf-amount" name="amount" type="number" min="1" max={refundable / 100} step="1" required defaultValue={refundable / 100} className="field" />
+        <p className="mt-1 text-xs text-muted">Up to {formatINR(refundable)}. Lower it to keep cancellation charges.</p>
+      </div>
+      <div>
+        <label htmlFor="rf-method" className="label">Refunded by</label>
+        <select id="rf-method" name="method" defaultValue="bank_transfer" className="field appearance-none">
+          {paymentMethods.map((m) => (
+            <option key={m} value={m}>{paymentMethodLabels[m]}</option>
+          ))}
+        </select>
+      </div>
+      <div className="sm:col-span-2">
+        <label htmlFor="rf-note" className="label">Reference / reason <span className="font-normal text-muted">(optional)</span></label>
+        <input id="rf-note" name="note" placeholder="UTR number, cancellation charges deducted…" className="field" />
+      </div>
+      {hasEmail && (
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" name="notify" defaultChecked className="size-4 accent-[var(--color-brand)]" /> Email the customer a refund confirmation
+        </label>
+      )}
+      <div className="flex gap-2 sm:col-span-2">
+        <button type="submit" disabled={busy} className="btn btn-primary !py-2 disabled:opacity-50">Save refund</button>
+        <button type="button" onClick={() => setOpen(false)} className="btn btn-outline !py-2">Cancel</button>
+      </div>
+      <p className="text-xs text-muted sm:col-span-2">This records the refund. Send the money from your bank, UPI or payment gateway dashboard as usual.</p>
+    </form>
+  );
+}
+
 function StatusCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean; onSave: (status: BookingStatus, notify: boolean) => Promise<boolean> }) {
   const [status, setStatus] = useState<BookingStatus>(b.status);
   const [notify, setNotify] = useState(true);
@@ -314,7 +384,7 @@ function StatusCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean;
   return (
     <Card title="Status">
       <label htmlFor="bk-status" className="sr-only">Booking status</label>
-      <select id="bk-status" value={status} onChange={(e) => setStatus(e.target.value as BookingStatus)} className="field appearance-none">
+      <select id="bk-status" value={status} disabled={b.refundedAmount > 0} onChange={(e) => setStatus(e.target.value as BookingStatus)} className="field appearance-none disabled:opacity-60">
         {bookingStatuses.map((s) => (
           <option key={s} value={s}>{bookingStatusLabels[s]}</option>
         ))}
@@ -327,7 +397,13 @@ function StatusCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean;
       <button type="button" disabled={busy || status === b.status} onClick={() => void onSave(status, notify)} className="btn btn-outline mt-3 w-full disabled:opacity-50">
         Update status
       </button>
-      <p className="mt-2 text-xs text-muted">Bookings confirm automatically when the deposit is paid.</p>
+      <p className="mt-2 text-xs text-muted">
+        {b.refundedAmount > 0
+          ? "Money has been refunded on this booking, so it stays cancelled. Make a new booking if they travel after all."
+          : status === "cancelled" && b.amountPaid > 0 && b.status !== "cancelled"
+          ? `The customer has paid ${formatINR(b.amountPaid)}. After cancelling, record any refund under Payments.`
+          : "Bookings confirm automatically when the deposit is paid."}
+      </p>
     </Card>
   );
 }

@@ -756,3 +756,290 @@ export const seedPackages: SeedPackage[] = [
     documents: ["Government photo ID for all travellers"],
   },
 ];
+
+// ---------------------------------------------------------------------------------------------
+// Added later (migration 0007) so every menu group has packages: Ramzan Umrah 2027, a second
+// Economy and Deluxe fixed departure, and a Turkey fixed group. Existing databases only get the
+// ones whose slug isn't taken. Prices are left "on request" for the team to set in the admin panel.
+
+const ramzanHighlights = [
+  "Taraweeh and Qiyam-ul-Layl at the Haram",
+  "Suhoor and iftar arranged every day",
+  "Guided Umrah and ziyarat in Makkah and Madinah",
+  "Limited seats — Ramzan hotels fill months ahead",
+];
+
+const ramzanInclusions = [
+  "Umrah visa",
+  "Return economy flights from Mumbai",
+  "Hotel stay on sharing basis",
+  "Suhoor and iftar",
+  "Airport and inter-city transfers",
+  "Guided ziyarat in Makkah and Madinah",
+  "Group leader from Mumbai",
+];
+
+const ramzanFaqs: Faq[] = [
+  {
+    q: "When is Ramzan 2027?",
+    a: "Ramzan 1448 AH is expected from about 8 February to 9 March 2027, subject to moon sighting. Exact flight dates are confirmed when the group closes.",
+  },
+  ...umrahFaqs,
+];
+
+function ramzanPackage(p: {
+  slug: string;
+  title: string;
+  summary: string;
+  days: number;
+  image: string;
+  extra: string;
+  itinerary: SeedPackage["itinerary"];
+}): SeedPackage {
+  return {
+    slug: p.slug,
+    category: "umrah",
+    title: p.title,
+    summary: p.summary,
+    days: p.days,
+    nights: p.days - 1,
+    tier: "Seasonal",
+    startingPrice: null,
+    sharing: "Quad / Triple / Double",
+    route: ["Mumbai", "Makkah"],
+    places: ["Makkah", "Madinah"],
+    image: p.image,
+    gallery: ["kaaba", "kaabaAerial", "madinahDome", "madinahInterior"],
+    highlights: [p.extra, ...ramzanHighlights],
+    hotels: [
+      { city: "Makkah", detail: "Hotel near Masjid al-Haram (category as per chosen room sharing)" },
+      { city: "Madinah", detail: "Hotel near Masjid an-Nabawi" },
+    ],
+    itinerary: p.itinerary,
+    inclusions: ramzanInclusions,
+    exclusions: umrahExclusions,
+    documents: umrahDocuments,
+    faqs: ramzanFaqs,
+  };
+}
+
+export const addedPackages: SeedPackage[] = [
+  // ---------------- Ramzan Umrah 2027 ----------------
+  ramzanPackage({
+    slug: "ramzan-umrah-2027-full-month",
+    title: "Ramzan Umrah 2027 – Full Month",
+    summary: "The whole blessed month in the Holy Cities: the first fast to Eid ul-Fitr in Makkah.",
+    days: 32,
+    image: "kaabaAerial",
+    extra: "All of Ramzan, including Eid ul-Fitr prayer in Makkah",
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Madinah", description: "Fly to Madinah before the first fast and check in near Masjid an-Nabawi." },
+      { day: "Day 2–11", title: "Madinah", description: "The first days of Ramzan in Madinah: Taraweeh, Rawdah (subject to permit) and ziyarat of Quba, Uhud and Qiblatain." },
+      { day: "Day 12", title: "Madinah → Makkah", description: "Enter ihram at Dhul Hulaifah, travel to Makkah and perform Umrah with our guide." },
+      { day: "Day 13–31", title: "Makkah", description: "The rest of Ramzan at the Haram, the last ten nights, optional I'tikaf and Eid prayer." },
+      { day: "Day 32", title: "Makkah → Mumbai", description: "Transfer to Jeddah for the return flight." },
+    ],
+  }),
+  ramzanPackage({
+    slug: "ramzan-umrah-2027-first-15-days",
+    title: "Ramzan Umrah 2027 – First 15 Days",
+    summary: "Begin Ramzan in the Holy Cities and be home with family for the rest of the month.",
+    days: 15,
+    image: "madinahDome",
+    extra: "The first half of Ramzan in Madinah and Makkah",
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Jeddah → Makkah", description: "Depart in ihram, transfer to Makkah and perform Umrah." },
+      { day: "Day 2–8", title: "Makkah", description: "Fasting, Taraweeh at the Haram and guided ziyarat." },
+      { day: "Day 9", title: "Makkah → Madinah", description: "Travel to Madinah by bus or Haramain train." },
+      { day: "Day 10–14", title: "Madinah", description: "Ramzan in Madinah, Rawdah (subject to permit) and ziyarat." },
+      { day: "Day 15", title: "Madinah → Mumbai", description: "Return flight to Mumbai." },
+    ],
+  }),
+  ramzanPackage({
+    slug: "ramzan-umrah-2027-last-15-days",
+    title: "Ramzan Umrah 2027 – Last 15 Days with Eid",
+    summary: "The second half of Ramzan, the last ten nights in Makkah and Eid ul-Fitr at the Haram.",
+    days: 17,
+    image: "kaaba",
+    extra: "Last ten nights in Makkah and Eid prayer at the Haram",
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Madinah", description: "Fly to Madinah and check in near Masjid an-Nabawi." },
+      { day: "Day 2–5", title: "Madinah", description: "Ramzan prayers, Rawdah (subject to permit) and ziyarat." },
+      { day: "Day 6", title: "Madinah → Makkah", description: "Enter ihram, travel to Makkah and perform Umrah." },
+      { day: "Day 7–16", title: "Makkah – last ten nights", description: "Taraweeh and Qiyam at the Haram, the search for Laylatul Qadr and Eid prayer." },
+      { day: "Day 17", title: "Makkah → Mumbai", description: "Transfer to Jeddah for the return flight." },
+    ],
+  }),
+  ramzanPackage({
+    slug: "ramzan-umrah-2027-20-days",
+    title: "Ramzan Umrah 2027 – 20 Days",
+    summary: "Twenty days of Ramzan with the full last ten nights in Makkah and Eid in the Holy City.",
+    days: 20,
+    image: "madinah",
+    extra: "Ten days in Madinah, then the last ten nights in Makkah",
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Madinah", description: "Fly to Madinah and check in near Masjid an-Nabawi." },
+      { day: "Day 2–8", title: "Madinah", description: "Ramzan in Madinah, Rawdah (subject to permit) and ziyarat." },
+      { day: "Day 9", title: "Madinah → Makkah", description: "Enter ihram at Dhul Hulaifah and perform Umrah in Makkah." },
+      { day: "Day 10–19", title: "Makkah – last ten nights", description: "Taraweeh, Qiyam and Eid prayer at Masjid al-Haram." },
+      { day: "Day 20", title: "Makkah → Mumbai", description: "Return flight to Mumbai." },
+    ],
+  }),
+  ramzanPackage({
+    slug: "ramzan-umrah-2027-itikaf",
+    title: "Ramzan Umrah 2027 – I'tikaf Special",
+    summary: "For those who want to sit in I'tikaf during the last ten nights at Masjid al-Haram or Masjid an-Nabawi.",
+    days: 14,
+    image: "madinahInterior",
+    extra: "Help with I'tikaf registration and arrangements",
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Jeddah → Makkah", description: "Depart in ihram, transfer to Makkah and perform Umrah." },
+      { day: "Day 2", title: "Makkah", description: "Rest and prepare for I'tikaf; our team helps with the registration." },
+      { day: "Day 3–12", title: "I'tikaf – last ten nights", description: "I'tikaf at the Haram (or Masjid an-Nabawi, as per permit). Your room stays reserved throughout." },
+      { day: "Day 13", title: "Eid ul-Fitr", description: "Eid prayer at the Haram and a day of celebration." },
+      { day: "Day 14", title: "Makkah → Mumbai", description: "Transfer to Jeddah for the return flight." },
+    ],
+  }),
+
+  // ---------------- Economy and Deluxe fixed departures ----------------
+  {
+    slug: "economy-umrah-21-days",
+    category: "umrah",
+    title: "Economy Umrah – 21 Days",
+    summary: "Three weeks of Umrah on a budget, on fixed group dates from Mumbai with shuttle service to the Haram.",
+    days: 21,
+    nights: 20,
+    tier: "Economy",
+    startingPrice: null,
+    sharing: "Quad / Triple / Double",
+    route: ["Mumbai", "Makkah"],
+    places: ["Makkah", "Madinah"],
+    image: "kaabaAerial",
+    gallery: ["kaaba", "madinah", "madinahInterior"],
+    highlights: [
+      "Umrah visa and return flights from Mumbai",
+      "12 nights Makkah, 8 nights Madinah",
+      "Shuttle service to Masjid al-Haram",
+      "Guided Umrah and ziyarat",
+    ],
+    hotels: [
+      { city: "Makkah", detail: "3★ hotel, approx. 800–1000 m from Haram with shuttle" },
+      { city: "Madinah", detail: "3★ hotel, approx. 400–600 m from Masjid an-Nabawi" },
+    ],
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Jeddah → Makkah", description: "Depart Mumbai in ihram. Transfer to Makkah, check in and perform Umrah with our guide." },
+      { day: "Day 2–12", title: "Makkah", description: "Prayers at Masjid al-Haram. Guided ziyarat of Jabal al-Noor, Jabal Thawr, Mina, Arafat and Muzdalifah." },
+      { day: "Day 13", title: "Makkah → Madinah", description: "Travel to Madinah by bus and check in near Masjid an-Nabawi." },
+      { day: "Day 14–20", title: "Madinah", description: "Prayers at Masjid an-Nabawi, Rawdah (subject to permit) and ziyarat of Quba, Uhud and Qiblatain." },
+      { day: "Day 21", title: "Madinah → Mumbai", description: "Transfer to the airport for the return flight to Mumbai." },
+    ],
+    inclusions: [
+      "Umrah visa",
+      "Return economy flights from Mumbai",
+      "Hotel stay on sharing basis",
+      "Daily breakfast and dinner",
+      "Airport and inter-city transfers by AC bus",
+      "Guided ziyarat in Makkah and Madinah",
+      "Zamzam water (as per airline policy)",
+    ],
+    exclusions: umrahExclusions,
+    documents: umrahDocuments,
+    faqs: umrahFaqs,
+  },
+  {
+    slug: "deluxe-umrah-15-days",
+    category: "umrah",
+    title: "Deluxe Umrah – 15 Days",
+    summary: "Fixed group departure with 5★ hotels close to both Harams, full board and a group leader from Mumbai.",
+    days: 15,
+    nights: 14,
+    tier: "Deluxe",
+    startingPrice: null,
+    sharing: "Triple / Double",
+    route: ["Mumbai", "Makkah"],
+    places: ["Makkah", "Madinah"],
+    image: "madinahDome",
+    gallery: ["kaaba", "kaabaAerial", "madinahInterior"],
+    highlights: [
+      "5★ hotels within a short walk of both Harams",
+      "Full board buffet meals",
+      "Haramain high-speed train Makkah → Madinah",
+      "Experienced group leader from Mumbai",
+    ],
+    hotels: [
+      { city: "Makkah", detail: "5★ hotel, approx. 100–300 m from Haram" },
+      { city: "Madinah", detail: "5★ hotel, approx. 100–200 m from Masjid an-Nabawi" },
+    ],
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Jeddah → Makkah", description: "Depart in ihram, transfer to your Makkah hotel and perform Umrah with the group leader." },
+      { day: "Day 2–8", title: "Makkah", description: "Prayers at the Haram, guided ziyarat and an optional day trip to Taif." },
+      { day: "Day 9", title: "Makkah → Madinah", description: "Travel by Haramain high-speed train." },
+      { day: "Day 10–14", title: "Madinah", description: "Prayers at Masjid an-Nabawi, Rawdah (subject to permit) and ziyarat." },
+      { day: "Day 15", title: "Madinah → Mumbai", description: "Return flight to Mumbai." },
+    ],
+    inclusions: [
+      "Umrah visa",
+      "Return economy flights from Mumbai",
+      "5★ hotels on sharing basis",
+      "Breakfast, lunch and dinner buffet",
+      "Haramain train Makkah → Madinah",
+      "All transfers by private AC coach",
+      "Guided ziyarat and group leader",
+    ],
+    exclusions: umrahExclusions,
+    documents: umrahDocuments,
+    faqs: umrahFaqs,
+  },
+
+  // ---------------- Turkey fixed group ----------------
+  {
+    slug: "turkey-fixed-group-9-days",
+    category: "turkey",
+    title: "Turkey Fixed Group Tour – 9 Days",
+    summary: "A guided group from Mumbai on fixed dates: Istanbul, Bursa and Cappadocia with the Islamic heritage sites on the way.",
+    days: 9,
+    nights: 8,
+    startingPrice: null,
+    sharing: "Triple / Double",
+    route: ["Mumbai", "Istanbul"],
+    places: ["Istanbul", "Bursa", "Cappadocia"],
+    image: "cappadociaBalloons",
+    gallery: ["istanbul", "cappadocia"],
+    highlights: [
+      "Fixed group dates with a tour leader from Mumbai",
+      "Hagia Sophia, Blue Mosque, Topkapi relics and Eyup Sultan",
+      "Bursa – the first Ottoman capital",
+      "Cappadocia with optional hot-air balloon ride",
+    ],
+    hotels: [
+      { city: "Istanbul", detail: "4★ hotel in the old city" },
+      { city: "Bursa", detail: "4★ hotel in the city centre" },
+      { city: "Cappadocia", detail: "Cave-style hotel" },
+    ],
+    itinerary: [
+      { day: "Day 1", title: "Mumbai → Istanbul", description: "Fly with the group to Istanbul and check in." },
+      { day: "Day 2", title: "Old City", description: "Hagia Sophia, Blue Mosque, Hippodrome and Topkapi Palace with the sacred relics." },
+      { day: "Day 3", title: "Eyup Sultan & Bosphorus", description: "Eyup Sultan Mosque, Pierre Loti hill and a Bosphorus cruise." },
+      { day: "Day 4", title: "Istanbul → Bursa", description: "Grand Mosque (Ulu Camii), Green Mosque and the Ottoman tombs." },
+      { day: "Day 5", title: "Bursa → Cappadocia", description: "Drive or fly to Cappadocia and check in to your cave hotel." },
+      { day: "Day 6", title: "Cappadocia", description: "Optional sunrise balloon ride, Goreme valleys and the underground city." },
+      { day: "Day 7", title: "Cappadocia → Istanbul", description: "Fly back to Istanbul for an evening at leisure." },
+      { day: "Day 8", title: "Bazaars", description: "Grand Bazaar, Spice Bazaar and Suleymaniye Mosque." },
+      { day: "Day 9", title: "Istanbul → Mumbai", description: "Return flight to Mumbai." },
+    ],
+    inclusions: [
+      "Turkey e-visa assistance",
+      "Return international flights and domestic flights",
+      "Hotels with breakfast and dinner",
+      "Sightseeing with an English/Urdu-speaking guide",
+      "Tour leader from Mumbai",
+      "All transfers by private coach",
+    ],
+    exclusions: ["Hot-air balloon ride (optional add-on)", "Lunch", "Personal expenses", "Tips"],
+    documents: [
+      "Passport valid for at least 6 months",
+      "Recent passport-size photographs",
+      "Bank statement and ITR for visa (if applicable)",
+    ],
+  },
+];

@@ -78,3 +78,26 @@ staffRouter.put("/:id", async (req, res) => {
     res.status(409).json({ ok: false, error: "Someone already has that email" });
   }
 });
+
+/**
+ * Removes a login for good. Their leads become unassigned (the database does that), and their
+ * name stays on the notes and changes they made. To keep the account for later, switch it off.
+ */
+staffRouter.delete("/:id", async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Staff member not found" });
+  const result = await db.transaction().execute(async (trx) => {
+    const openLeads = await trx
+      .selectFrom("leads")
+      .select((eb) => eb.fn.countAll<number>().as("n"))
+      .where("assigned_to", "=", id)
+      .where("status", "not in", ["converted", "lost"])
+      .executeTakeFirstOrThrow();
+    await trx.deleteFrom("notifications").where("user_id", "=", id).execute();
+    const deleted = await trx.deleteFrom("users").where("id", "=", id).returning("name").executeTakeFirst();
+    return deleted ? { name: deleted.name, unassignedLeads: Number(openLeads.n) } : null;
+  });
+  if (!result) return void res.status(404).json({ ok: false, error: "Staff member not found" });
+  forgetUser(id);
+  res.json({ ok: true, ...result });
+});
