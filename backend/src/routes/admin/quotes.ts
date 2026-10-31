@@ -1,3 +1,6 @@
+import { downloadQuotePdf } from "../../services/quote-pdf.ts";
+import { getSettings } from "../../services/settings.ts";
+import { toPublicQuote } from "../../services/quotes.ts";
 import type { Paged } from "@dilruba/shared/crm";
 import { quoteInputSchema, quoteStatuses, type AdminQuote } from "@dilruba/shared/ops";
 import { randomInt } from "node:crypto";
@@ -72,6 +75,14 @@ quotesRouter.get("/:id", async (req, res) => {
   const quote = id && (await loadQuote(id));
   if (!quote) return void res.status(404).json({ ok: false, error: "Quote not found" });
   res.json(quote);
+});
+
+quotesRouter.get("/:id/pdf", async (req, res) => {
+  const id = parseId(req.params.id);
+  const q = id && await db.selectFrom("quotes").selectAll().where("id", "=", id).executeTakeFirst();
+  if (!q) return void res.status(404).json({ ok: false, error: "Quote not found" });
+  const c = await db.selectFrom("customers").selectAll().where("id", "=", q.customer_id).executeTakeFirstOrThrow();
+  await downloadQuotePdf(res, await toPublicQuote(q, c), await getSettings());
 });
 
 function columns(d: z.output<typeof quoteInputSchema>) {

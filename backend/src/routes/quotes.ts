@@ -1,3 +1,5 @@
+import { downloadQuotePdf } from "../services/quote-pdf.ts";
+import { getSettings } from "../services/settings.ts";
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db/index.ts";
@@ -25,6 +27,13 @@ quotesPublicRouter.get("/:reference", async (req, res) => {
   if (!q) return void res.status(404).json({ ok: false, error: "Quote not found. Please use the link we sent you." });
   const c = await db.selectFrom("customers").selectAll().where("id", "=", q.customer_id).executeTakeFirstOrThrow();
   res.json({ ok: true, quote: await toPublicQuote(q, c) });
+});
+
+quotesPublicRouter.get("/:reference/pdf", async (req, res) => {
+  const q = await findQuote(req.params.reference, req.query.t);
+  if (!q) return void res.status(404).json({ ok: false, error: "Quote not found" });
+  const c = await db.selectFrom("customers").selectAll().where("id", "=", q.customer_id).executeTakeFirstOrThrow();
+  await downloadQuotePdf(res, await toPublicQuote(q, c), await getSettings());
 });
 
 const respondSchema = z.object({ token: z.string().min(10).max(100), reason: z.string().trim().max(500).optional() });

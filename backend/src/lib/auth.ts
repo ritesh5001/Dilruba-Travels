@@ -4,6 +4,7 @@ import type { NextFunction, Request, Response } from "express";
 import { config } from "../config.ts";
 import { db } from "../db/index.ts";
 import { safeEqual } from "./password.ts";
+import { getInternal } from "../services/settings.ts";
 
 export { safeEqual, verifyPassword } from "./password.ts";
 
@@ -18,20 +19,29 @@ function sign(value: string) {
   return createHmac("sha256", config.SESSION_SECRET).update(value).digest("base64url");
 }
 
-function createSession(uid: number, email: string) {
-  const payload = Buffer.from(JSON.stringify({ uid, email, exp: Date.now() + SESSION_DAYS * 864e5 })).toString("base64url");
+export async function passwordHashFor(uid: number): Promise<string | null> {
+  if (uid === ENV_OWNER_ID) {
+    const saved = await getInternal<{ email: string; hash: string }>("ownerPassword");
+    return saved && saved.email === config.ADMIN_EMAIL ? saved.hash : config.ADMIN_PASSWORD_HASH ?? null;
+  }
+  const user = await db.selectFrom("users").select("password_hash").where("id", "=", uid).executeTakeFirst();
+  return user?.password_hash ?? null;
+}
+
+async function createSession(uid: number, email: string) {
+  const payload = Buffer.from(JSON.stringify({ uid, email, credential: sign((await passwordHashFor(uid)) ?? ""), exp: Date.now() + SESSION_DAYS * 864e5 })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-function readSession(token: string | undefined): { uid: number; email: string } | null {
+function readSession(token: string | undefined): { uid: number; email: string; credential?: string } | null {
   if (!token) return null;
   const [payload, signature] = token.split(".");
   if (!payload || !signature || !safeEqual(sign(payload), signature)) return null;
   try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { uid?: number; email?: string; exp?: number };
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { uid?: number; email?: string; credential?: string; exp?: number };
     if (!data.email || !data.exp || data.exp < Date.now()) return null;
     // Sessions from before staff accounts carry no uid: they belong to the owner.
-    return { uid: data.uid ?? ENV_OWNER_ID, email: data.email };
+    return { uid: data.uid ?? ENV_OWNER_ID, email: data.email, credential: data.credential };
   } catch {
     return null;
   }
@@ -45,8 +55,8 @@ function getCookie(req: Request, name: string) {
   return undefined;
 }
 
-export function setSessionCookie(res: Response, uid: number, email: string) {
-  res.cookie(SESSION_COOKIE, createSession(uid, email), {
+export async function setSessionCookie(res: Response, uid: number, email: string) {
+  res.cookie(SESSION_COOKIE, await createSession(uid, email), {
     httpOnly: true,
     sameSite: "lax",
     secure: config.isProduction,
@@ -84,6 +94,8 @@ async function loadUser(id: number): Promise<Me | null> {
 export async function getAdmin(req: Request): Promise<Me | null> {
   const session = readSession(getCookie(req, SESSION_COOKIE));
   if (!session) return null;
+  const hash = await passwordHashFor(session.uid);
+  if (!hash || !session.credential || !safeEqual(session.credential, sign(hash))) return null;
   if (session.uid === ENV_OWNER_ID) {
     // A changed ADMIN_EMAIL signs the owner out.
     const owner = envOwner();

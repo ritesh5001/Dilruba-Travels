@@ -1,3 +1,4 @@
+import { getSettings, tcsFor } from "../services/settings.ts";
 import { bookingRequestSchema, payRequestSchema } from "@dilruba/shared/booking";
 import { Router } from "express";
 import { db } from "../db/index.ts";
@@ -9,7 +10,6 @@ import { paymentProvider } from "../payments/index.ts";
 import { todayIST } from "@dilruba/shared/ops";
 import { refreshWebsite } from "../services/catalog.ts";
 import { notify } from "../services/notifications.ts";
-import { getSettings } from "../services/settings.ts";
 import { addEvent, applyReferral, balanceOf, dueNow, toPublicBooking, upsertCustomer } from "../services/crm.ts";
 
 export const bookingsRouter = Router();
@@ -27,9 +27,14 @@ bookingsRouter.post(
       return;
     }
 
+    const pkg = await db.selectFrom("packages").selectAll().where("category", "=", data.packageCategory).where("slug", "=", data.packageSlug).where("published", "=", true).executeTakeFirst();
+    if (!pkg) return void res.status(404).json({ ok: false, error: "Package is no longer available" });
+    const unitPrice = data.roomType ? pkg.room_prices[data.roomType] : null;
+    const total = unitPrice == null ? null : Math.round(unitPrice * (data.adults + data.children) * 100);
+    const settings = await getSettings();
     // The customer picked a fixed date: it must be an open, upcoming departure of this package
     // with enough seats, or they're told to pick another.
-    let departure: { id: number; title: string } | undefined;
+    let departure: { id: number; title: string; start_date: string } | undefined;
     if (data.departureId) {
       const d = await db
         .selectFrom("departures")
@@ -77,11 +82,16 @@ bookingsRouter.post(
             customer_id: customer.id,
             package_category: data.packageCategory,
             package_slug: data.packageSlug,
-            package_title: data.packageTitle,
-            travel_month: data.travelMonth,
+            package_title: pkg.title,
+            travel_month: departure?.start_date.slice(0, 7) ?? data.travelMonth,
             adults: data.adults,
             children: data.children,
             customer_notes: data.notes ?? null,
+            mobile: data.mobile ?? null,
+            passport_number: data.passportNumber?.toUpperCase() ?? null,
+            room_type: data.roomType ?? null,
+            total_amount: total,
+            tcs_amount: tcsFor(settings, pkg.category, total),
             departure_id: departure?.id ?? null,
           })
           .returningAll()

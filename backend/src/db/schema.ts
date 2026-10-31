@@ -54,6 +54,9 @@ export interface BookingTable {
   adults: number;
   children: number;
   customer_notes: string | null;
+  mobile: string | null;
+  passport_number: string | null;
+  room_type: RoomType | null;
   status: ColumnType<BookingStatus, BookingStatus | undefined, BookingStatus>;
   /** All amounts in paise. Null until staff set the price. */
   total_amount: number | null;
@@ -117,6 +120,7 @@ export interface PackageTable {
   /** Rupees per person; null shows "Best price on request". */
   starting_price: number | null;
   sharing: string | null;
+  room_prices: ColumnType<Partial<Record<RoomType, number | null>>, string | undefined, string>;
   route_from: string;
   route_to: string;
   /** Image URL: /images/<name>.webp (built in) or /api/media/<id>.webp (uploaded). */

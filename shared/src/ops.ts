@@ -23,7 +23,7 @@ export const staffRoleLabels: Record<StaffRole, string> = {
   sales: "Sales: only their assigned leads, their quotes and customers",
   operations: "Operations: bookings, travellers, passports and departures",
   accounts: "Accounts: payments, supplier costs, suppliers and reports",
-  viewer: "Viewer: read-only leads, customers and bookings",
+  viewer: "Viewer: read-only leads and bookings; can update customers",
 };
 
 /**
@@ -54,9 +54,9 @@ export const rolePermissions: Record<StaffRole, readonly Permission[]> = {
   owner: permissions,
   manager: permissions.filter((p) => p !== "staff" && p !== "settings" && p !== "costs"),
   sales: ["leads.read", "leads.write", "quotes.write", "customers.read", "customers.write", "bookings.read"],
-  operations: ["customers.read", "bookings.read", "bookings.write", "travellers.write", "documents.read", "catalog.write"],
-  accounts: ["customers.read", "bookings.read", "payments.write", "costs", "reports"],
-  viewer: ["leads.read", "leads.all", "customers.read", "bookings.read"],
+  operations: ["customers.read", "customers.write", "bookings.read", "bookings.write", "travellers.write", "documents.read", "catalog.write"],
+  accounts: ["customers.read", "customers.write", "bookings.read", "payments.write", "costs", "reports"],
+  viewer: ["leads.read", "leads.all", "customers.read", "customers.write", "bookings.read"],
 };
 
 /** Logins from before the role system were "staff"; they have a Manager's access. */

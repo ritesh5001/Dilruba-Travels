@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
-import { bookingRequestSchema } from "@dilruba/shared/booking";
-import type { CategorySlug } from "@dilruba/shared/catalog";
+import { bookingRequestSchema, formatINR } from "@dilruba/shared/booking";
+import type { TravelPackage } from "@dilruba/shared/catalog";
+import { roomTypes, roomTypeLabels, type RoomType } from "@dilruba/shared/ops";
 import { enquirySchema } from "@dilruba/shared/enquiry";
 import { formatDay, type PublicDeparture } from "@dilruba/shared/ops";
 import { serviceFor } from "@/lib/packages";
@@ -12,7 +13,7 @@ import { getReferral } from "@/lib/referral";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
-type Pkg = { category: CategorySlug; slug: string; title: string; departures?: PublicDeparture[] };
+type Pkg = Pick<TravelPackage, "category" | "slug" | "title" | "departures" | "startingPrice" | "roomPrices">;
 
 const counts = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
@@ -35,6 +36,10 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
   const departures = pkg.departures ?? [];
   const open = departures.some((d) => d.seatsLeft > 0);
   const [departureId, setDepartureId] = useState("");
+  const [roomType, setRoomType] = useState<RoomType>(() => roomTypes.find((room) => pkg.roomPrices?.[room] != null) ?? "quad");
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
+  const unitPrice = pkg.roomPrices?.[roomType] ?? null;
   const departure = departures.find((d) => String(d.id) === departureId);
 
   async function post(url: string, body: unknown) {
@@ -50,6 +55,9 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
     const adults = Number(data.adults);
     const children = Number(data.children);
 
+    const personal = bookingRequestSchema.pick({ name: true, email: true, phone: true, mobile: true, passportNumber: true, roomType: true }).safeParse(data);
+    if (!personal.success) return setError(personal.error.issues[0]?.message ?? "Please check your details");
+    if (!data.passportNumber || !data.mobile) return setError("Please enter your passport and mobile numbers");
     let request: { url: string; body: unknown };
     if (open) {
       if (!departure) return setError("Please choose a travel date");
@@ -79,6 +87,8 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
         travellers: Math.min(99, adults + children),
         message: [
           `Asked for the next available dates (${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}). No dates were open on the website.`,
+          `Room sharing: ${roomTypeLabels[roomType]}`,
+          `Passport: ${data.passportNumber}; mobile: ${data.mobile}`,
           data.notes && `Notes: ${data.notes}`,
         ]
           .filter(Boolean)
@@ -135,15 +145,23 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
         <input id="bk-name" name="name" autoComplete="name" required placeholder="As on passport" className="field" />
       </div>
       <div>
-        <label htmlFor="bk-email" className="label">Email{!open && <span className="font-normal text-muted"> (optional)</span>}</label>
-        <input id="bk-email" name="email" type="email" autoComplete="email" required={open} placeholder="you@example.com" className="field" />
+        <label htmlFor="bk-email" className="label">Email ID</label>
+        <input id="bk-email" name="email" type="email" autoComplete="email" required placeholder="you@example.com" className="field" />
       </div>
       <div>
-        <label htmlFor="bk-phone" className="label">Phone / WhatsApp</label>
+        <label htmlFor="bk-phone" className="label">Contact number</label>
         <input id="bk-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="+91 98XXX XXXXX" className="field" />
       </div>
+      <div>
+        <label htmlFor="bk-mobile" className="label">Mobile / WhatsApp number</label>
+        <input id="bk-mobile" name="mobile" type="tel" required className="field" />
+      </div>
+      <div>
+        <label htmlFor="bk-passport" className="label">Passport number</label>
+        <input id="bk-passport" name="passportNumber" required maxLength={30} className="field uppercase" />
+      </div>
       <div className="sm:col-span-2">
-        <label htmlFor="bk-date" className="label">Travel date</label>
+        <label htmlFor="bk-date" className="label">Available departure dates</label>
         <select
           id="bk-date"
           value={open ? departureId : ""}
@@ -164,7 +182,7 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
       </div>
       <div>
         <label htmlFor="bk-adults" className="label">Adults</label>
-        <select id="bk-adults" name="adults" defaultValue="2" className="field appearance-none">
+        <select id="bk-adults" name="adults" value={adults} onChange={(e) => setAdults(Number(e.target.value))} className="field appearance-none">
           {counts(1, 30).map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
@@ -172,11 +190,19 @@ export function BookingForm({ pkg }: { pkg: Pkg }) {
       </div>
       <div>
         <label htmlFor="bk-children" className="label">Children <span className="font-normal text-muted">(under 12)</span></label>
-        <select id="bk-children" name="children" defaultValue="0" className="field appearance-none">
+        <select id="bk-children" name="children" value={children} onChange={(e) => setChildren(Number(e.target.value))} className="field appearance-none">
           {counts(0, 20).map((n) => (
             <option key={n} value={n}>{n}</option>
           ))}
         </select>
+      </div>
+      <div className="sm:col-span-2">
+        <label htmlFor="bk-sharing" className="label">Room sharing</label>
+        <select id="bk-sharing" name="roomType" value={roomType} onChange={(e) => setRoomType(e.target.value as RoomType)} className="field">
+          {roomTypes.map((room) => <option key={room} value={room}>{roomTypeLabels[room]} — {pkg.roomPrices?.[room] != null ? `${formatINR(pkg.roomPrices[room]! * 100)} / person` : "Price on request"}</option>)}
+        </select>
+        <p className="mt-3 text-lg font-semibold" aria-live="polite">{adults + children} passengers · {unitPrice == null ? "Price on request" : `${formatINR(unitPrice * (adults + children) * 100)} total`}</p>
+        <p className="text-xs text-muted">{unitPrice != null ? "Package estimate for all passengers. Applicable taxes and final availability will be confirmed by our team." : "Our team will confirm the price for this room type."}</p>
       </div>
       <div className="sm:col-span-2">
         <label htmlFor="bk-notes" className="label">

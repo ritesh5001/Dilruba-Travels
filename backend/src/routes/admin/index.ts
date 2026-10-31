@@ -8,6 +8,7 @@ import { db } from "../../db/index.ts";
 import {
   clearSessionCookie,
   currentUser,
+  passwordHashFor,
   envOwner,
   getAdmin,
   guard,
@@ -20,6 +21,8 @@ import {
   userCan,
   verifyPassword,
 } from "../../lib/auth.ts";
+import { hashPassword } from "../../lib/password.ts";
+import { setInternal } from "../../services/settings.ts";
 import { parseBody } from "../../lib/util.ts";
 import { dashboardAlerts } from "../../services/alerts.ts";
 import { bookingsAdminRouter } from "./bookings.ts";
@@ -51,11 +54,11 @@ adminRouter.post(
 
     // The owner from the server settings.
     const owner = envOwner();
-    if (owner && config.ADMIN_PASSWORD_HASH && safeEqual(email, owner.email.toLowerCase())) {
-      if (!(await verifyPassword(data.password, config.ADMIN_PASSWORD_HASH))) {
+    if (owner && safeEqual(email, owner.email.toLowerCase())) {
+      if (!(await verifyPassword(data.password, (await passwordHashFor(owner.id)) ?? DUMMY_HASH))) {
         return void res.status(401).json({ ok: false, error: "Wrong email or password" });
       }
-      setSessionCookie(res, owner.id, owner.email);
+      await setSessionCookie(res, owner.id, owner.email);
       return void res.json({ ok: true, ...owner });
     }
 
@@ -72,7 +75,7 @@ adminRouter.post(
     }
     if (!user.active) return void res.status(403).json({ ok: false, error: "This account has been switched off. Ask the owner." });
     await db.updateTable("users").set({ last_login_at: new Date() }).where("id", "=", user.id).execute();
-    setSessionCookie(res, user.id, user.email);
+    await setSessionCookie(res, user.id, user.email);
     const me: Me = { id: user.id, name: user.name, email: user.email, role: user.role };
     res.json({ ok: true, ...me });
   },
@@ -91,6 +94,20 @@ adminRouter.get("/me", async (req, res) => {
 
 // Everything below needs a logged-in admin.
 adminRouter.use(requireAdmin);
+
+adminRouter.post("/change-password", rateLimit({ windowMs: 15 * 60_000, max: 10, message: "Too many attempts. Try again in 15 minutes." }), async (req, res) => {
+  const data = parseBody(z.object({ currentPassword: z.string().min(1).max(200), newPassword: z.string().min(10, "Use at least 10 characters").max(200) }), req.body, res);
+  if (!data) return;
+  const me = currentUser(res);
+  const hash = await passwordHashFor(me.id);
+  if (!hash || !(await verifyPassword(data.currentPassword, hash))) return void res.status(400).json({ ok: false, error: "Current password is incorrect" });
+  if (data.currentPassword === data.newPassword) return void res.status(400).json({ ok: false, error: "Choose a different new password" });
+  const nextHash = await hashPassword(data.newPassword);
+  if (me.id === 0) await setInternal("ownerPassword", { email: me.email, hash: nextHash });
+  else await db.updateTable("users").set({ password_hash: nextHash }).where("id", "=", me.id).execute();
+  await setSessionCookie(res, me.id, me.email);
+  res.json({ ok: true });
+});
 
 adminRouter.get("/dashboard", async (_req, res) => {
   const me = currentUser(res);

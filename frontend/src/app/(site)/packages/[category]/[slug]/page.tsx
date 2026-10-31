@@ -1,3 +1,4 @@
+import { roomTypes, roomTypeLabels } from "@dilruba/shared/ops";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -123,6 +124,9 @@ export default async function PackagePage(props: PageProps<"/packages/[category]
             <p className="mt-2 text-sm text-muted">
               Prices change with dates and hotel availability. Message us for today&apos;s best price.
             </p>
+            <div className="mt-4 grid gap-2 border-t border-line pt-4">
+              {roomTypes.map((room) => <p key={room} className="flex justify-between gap-3 text-sm"><span>{roomTypeLabels[room]}</span><strong>{p.roomPrices?.[room] != null ? `${formatPrice(p.roomPrices[room]!)} / person` : "On request"}</strong></p>)}
+            </div>
             {p.departures && p.departures.length > 0 && (
               <div className="mt-5 border-t border-line pt-4">
                 <p className="text-sm font-semibold">Upcoming group dates</p>

@@ -71,6 +71,9 @@ export type AdminBookingDetail = AdminBooking & {
   packageCategory: string | null;
   packageSlug: string | null;
   customerNotes: string | null;
+  mobile: string | null;
+  passportNumber: string | null;
+  roomType: import("./ops.ts").RoomType | null;
   leadId: number | null;
   dueNow: number;
   /** The customer's private booking page (view and pay). */

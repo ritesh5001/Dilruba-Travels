@@ -9,13 +9,16 @@
     "start": "NODE_ENV=production node --env-file-if-exists=.env src/index.ts",
     "typecheck": "tsc --noEmit",
     "admin:hash": "node src/scripts/hash-password.ts",
-    "db:local": "mkdir -p .data && pglite-server --db=.data/pglite --port=5433 --max-connections=10"
+    "db:local": "mkdir -p .data && pglite-server --db=.data/pglite --port=5433 --max-connections=10",
+    "db:fresh": "node --env-file-if-exists=.env src/scripts/fresh-start.ts --clear-crm",
+    "test:crm": "node src/tests/crm.test.ts"
   },
   "dependencies": {
     "@dilruba/shared": "*",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "kysely": "0.29.6",
+    "pdfkit": "^0.20.2",
     "pg": "8.23.0",
     "sharp": "0.35.5",
     "zod": "^4.6.7"
@@ -26,6 +29,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.7",
     "@types/pg": "8.23.0",
     "typescript": "^5"
   }

@@ -129,15 +129,21 @@ customersRouter.patch("/:id", async (req, res) => {
   const data = parseBody(
     z.object({
       name: z.string().trim().min(2).max(80).optional(),
+      phone: phoneSchema.optional(),
       email: z.union([z.email("Enter a valid email").trim().max(160), z.literal("")]).optional(),
     }),
     req.body,
     res,
   );
   if (!id || !data) return;
+  const phone = data.phone === undefined ? undefined : normalizePhone(data.phone);
+  if (phone) {
+    const duplicate = await db.selectFrom("customers").select("id").where("phone", "=", phone).where("id", "!=", id).executeTakeFirst();
+    if (duplicate) return void res.status(409).json({ ok: false, error: "This phone number belongs to another customer." });
+  }
   const updated = await db
     .updateTable("customers")
-    .set({ name: data.name, email: data.email === undefined ? undefined : data.email.toLowerCase() || null, updated_at: new Date() })
+    .set({ name: data.name, phone, email: data.email === undefined ? undefined : data.email.toLowerCase() || null, updated_at: new Date() })
     .where("id", "=", id)
     .returning("id")
     .executeTakeFirst();

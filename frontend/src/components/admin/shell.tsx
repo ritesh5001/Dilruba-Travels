@@ -39,6 +39,7 @@ const nav: { href: string; label: string; icon: typeof LayoutDashboard; needs?: 
   { href: "/admin/reports", label: "Reports", icon: BarChart3, needs: "reports" },
   { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone, needs: "reports" },
   { href: "/admin/staff", label: "Staff", icon: UserCog, needs: "staff" },
+  { href: "/admin/account", label: "Change password", icon: UserCog },
   { href: "/admin/settings", label: "Settings", icon: Settings, needs: "settings" },
 ];
 

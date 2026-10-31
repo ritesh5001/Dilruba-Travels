@@ -13,6 +13,7 @@ import {
   paymentMethods,
   type BookingStatus,
 } from "@dilruba/shared/booking";
+import type { AdminPackage } from "@dilruba/shared/catalog";
 import type { AdminBookingDetail } from "@dilruba/shared/crm";
 import { formatDay, type AdminDeparture } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
@@ -69,7 +70,7 @@ export default function BookingDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
         <div className="space-y-6">
-          {(can("payments.write") || can("bookings.write")) && <PricingCard key={`${b.tcsAmount}-${b.departure?.id}`} b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Price saved.")} />}
+          {(can("payments.write") || can("bookings.write")) && <PricingCard key={`${b.tcsAmount}-${b.departure?.id}`} b={b} busy={action.busy} onSave={(body) => mutate("", "PATCH", body, "Booking updated.")} />}
 
           <Card title="Payments">
             <div className="mb-4 grid gap-4 rounded-xl bg-sand p-4 sm:grid-cols-4">
@@ -183,6 +184,7 @@ export default function BookingDetailPage() {
           </Card>
 
           <Card title="Customer">
+            <Link href={`/admin/customers/${b.customer.id}`} className="btn btn-outline mb-3 !py-2">Edit customer details</Link>
             <div className="grid gap-3">
               <Field label="Name"><Link href={`/admin/customers/${b.customer.id}`} className="hover:text-brand">{b.customer.name}</Link></Field>
               <Field label="Phone">{b.customer.phone}</Field>
@@ -197,11 +199,15 @@ export default function BookingDetailPage() {
 
 function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean; onSave: (body: unknown) => Promise<boolean> }) {
   const { data: departures } = useAdminData<AdminDeparture[]>("/departures");
+  const can = useCan();
+  const { data: packages } = useAdminData<AdminPackage[]>("/packages");
+  const [trip, setTrip] = useState({ title: b.packageTitle, category: b.packageCategory ?? "", slug: b.packageSlug ?? "" });
+  const selectedPackage = trip.category && trip.slug ? `${trip.category}/${trip.slug}` : "";
   const [tcs, setTcs] = useState(rupees(b.tcsAmount));
   // Controlled: the list loads after the form, and an uncontrolled select would lose its value.
   const [departureId, setDepartureId] = useState(b.departure ? String(b.departure.id) : "");
   return (
-    <Card title="Price">
+    <Card title="Edit booking">
       <form
         key={`${b.totalAmount}-${b.depositAmount}-${b.tcsAmount}-${b.adults}-${b.children}-${b.travelMonth}-${b.departure?.id}`}
         onSubmit={(e) => {
@@ -209,25 +215,45 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
           const f = new FormData(e.currentTarget);
           const num = (k: string) => (f.get(k) === "" ? null : Number(f.get(k)));
           void onSave({
-            totalAmount: num("total"),
-            depositAmount: num("deposit"),
-            tcsAmount: Number(tcs) || 0,
-            adults: Number(f.get("adults")),
-            children: Number(f.get("children")),
-            travelMonth: f.get("travelMonth") || null,
-            departureId: departureId ? Number(departureId) : null,
+            ...(can("payments.write") ? { totalAmount: num("total"), depositAmount: num("deposit"), tcsAmount: Number(tcs) || 0 } : {}),
+            ...(can("bookings.write") ? {
+              packageTitle: f.get("packageTitle"), packageCategory: f.get("packageCategory") || null, packageSlug: f.get("packageSlug") || null,
+              customerNotes: f.get("customerNotes") || null, mobile: f.get("mobile") || null,
+              passportNumber: f.get("passportNumber") || null, roomType: f.get("roomType") || null,
+              adults: Number(f.get("adults")), children: Number(f.get("children")),
+              travelMonth: f.get("travelMonth") || null, departureId: departureId ? Number(departureId) : null,
+            } : {}),
           });
         }}
         className="grid gap-4 sm:grid-cols-2"
       >
         <div>
           <label htmlFor="bk-total" className="label">Total price (₹, all travellers)</label>
-          <input id="bk-total" name="total" type="number" min="0" step="1" inputMode="numeric" defaultValue={rupees(b.totalAmount)} placeholder="e.g. 285000" className="field" />
+          <input id="bk-total" name="total" disabled={!can("payments.write")} type="number" min="0" step="1" inputMode="numeric" defaultValue={rupees(b.totalAmount)} placeholder="e.g. 285000" className="field" />
         </div>
         <div>
           <label htmlFor="bk-deposit" className="label">Deposit to confirm (₹)</label>
-          <input id="bk-deposit" name="deposit" type="number" min="0" step="1" inputMode="numeric" defaultValue={rupees(b.depositAmount)} placeholder="Leave empty to ask for the full amount" className="field" />
+          <input id="bk-deposit" name="deposit" disabled={!can("payments.write")} type="number" min="0" step="1" inputMode="numeric" defaultValue={rupees(b.depositAmount)} placeholder="Leave empty to ask for the full amount" className="field" />
         </div>
+        <fieldset disabled={!can("bookings.write")} className="grid gap-4 sm:col-span-2 sm:grid-cols-2">
+          <div className="sm:col-span-2"><label className="label" htmlFor="edit-title">Package title</label><input id="edit-title" name="packageTitle" value={trip.title} onChange={(e) => setTrip({ ...trip, title: e.target.value })} required className="field" /></div>
+          <div className="sm:col-span-2">
+            <label className="label" htmlFor="edit-package">Package</label>
+            <select id="edit-package" value={selectedPackage} onChange={(e) => {
+              const pkg = packages?.find((p) => `${p.category}/${p.slug}` === e.target.value);
+              setTrip(pkg ? { title: pkg.title, category: pkg.category, slug: pkg.slug } : { ...trip, category: "", slug: "" });
+            }} className="field">
+              <option value="">Custom trip</option>
+              {selectedPackage && !packages?.some((p) => `${p.category}/${p.slug}` === selectedPackage) && <option value={selectedPackage}>{trip.title}</option>}
+              {packages?.map((p) => <option key={p.id} value={`${p.category}/${p.slug}`}>{p.title}</option>)}
+            </select>
+            <input type="hidden" name="packageCategory" value={trip.category} />
+            <input type="hidden" name="packageSlug" value={trip.slug} />
+          </div>
+          <div><label className="label" htmlFor="edit-mobile">Mobile number</label><input id="edit-mobile" name="mobile" type="tel" defaultValue={b.mobile ?? ""} className="field" /></div>
+          <div><label className="label" htmlFor="edit-passport">Passport number</label><input id="edit-passport" name="passportNumber" defaultValue={b.passportNumber ?? ""} className="field" /></div>
+          <div><label className="label" htmlFor="edit-room">Room sharing</label><select id="edit-room" name="roomType" defaultValue={b.roomType ?? ""} className="field"><option value="">Unspecified</option>{["single", "double", "triple", "quad"].map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
+          <div><label className="label" htmlFor="edit-notes">Customer notes</label><textarea id="edit-notes" name="customerNotes" defaultValue={b.customerNotes ?? ""} className="field" /></div>
         <div>
           <label htmlFor="bk-adults" className="label">Adults</label>
           <input id="bk-adults" name="adults" type="number" min="1" max="50" defaultValue={b.adults} className="field" />
@@ -250,12 +276,13 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
             ))}
           </select>
         </div>
+        </fieldset>
         <div className="sm:col-span-2">
           <label htmlFor="bk-tcs" className="label">TCS collected (₹) <span className="font-normal text-muted">charged on top of the total</span></label>
           <div className="flex gap-2">
-            <input id="bk-tcs" type="number" min="0" step="1" inputMode="numeric" value={tcs} onChange={(e) => setTcs(e.target.value)} placeholder="0" className="field" />
+            <input id="bk-tcs" disabled={!can("payments.write")} type="number" min="0" step="1" inputMode="numeric" value={tcs} onChange={(e) => setTcs(e.target.value)} placeholder="0" className="field" />
             {b.suggestedTcs > 0 && rupees(b.suggestedTcs) !== tcs && (
-              <button type="button" onClick={() => setTcs(rupees(b.suggestedTcs))} className="btn btn-outline shrink-0 !py-2 text-sm">
+              <button type="button" disabled={!can("payments.write")} onClick={() => setTcs(rupees(b.suggestedTcs))} className="btn btn-outline shrink-0 !py-2 text-sm">
                 Use {formatINR(b.suggestedTcs)}
               </button>
             )}

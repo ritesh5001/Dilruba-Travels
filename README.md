@@ -231,3 +231,20 @@ payment-request and manual payments).
 - Replace stock photos with real group and office photos where possible.
 - Review the draft Terms and Privacy Policy, and add payment, cancellation and refund terms
   (Razorpay requires these pages for live mode).
+
+
+## CRM editing, package variants and quotations
+
+- All signed-in staff roles can update customer name, contact number and email. Sales retain their assigned-customer scope. Duplicate phone numbers are refused.
+- Booking details can be edited on the booking page, including package title/link, dates, passenger counts, room sharing, mobile, passport and customer notes. Operations edit trip details; accounts edit prices; managers and owners can edit both. Customer contact details are linked from the booking. Existing traveller/passport, instalment, payment and cost controls remain available.
+- Every staff member can change their own password under **Change password**. Enter the current password and confirm a new password of at least 10 characters. Owner password changes are stored as a scrypt hash in database settings, survive restarts, and override `ADMIN_PASSWORD_HASH` for that owner email. Password changes invalidate older sessions. This version requires users to sign in again after deployment.
+- In **Packages**, set Single, Double, Triple and Quad prices in rupees per person. Blank rates show price on request; no rates are inferred. The website's starting price is the lowest configured variant. The booking form updates the estimate with sharing type and total passenger count. The API calculates the price from the stored package rates and ignores submitted prices.
+- Configure fixed departure dates in **Departures**, linked to a package. Upcoming dates appear on package cards, package details and the booking form.
+- The booking form captures name, contact number, mobile/WhatsApp, passport number, email, adults/children, available departure and room sharing. With no open departure, the details become an enquiry.
+- Staff quotations and customer quote links include **Download letterhead PDF**. The PDF uses the bundled company logo plus the legal name, address, GSTIN and bank details from Settings. Public PDF access requires the quote's secret token; drafts remain staff-only. PDF generation uses [PDFKit](https://pdfkit.org/docs/getting_started.html).
+
+Validation: `npm run test:crm -w backend` starts its own temporary PGlite database and API. It does not read `.env` or contact production services. Run `npm run typecheck`, `npm run lint` and `npm run build` for the remaining checks.
+
+### Explicit CRM fresh start
+
+`npm run db:fresh -w backend` backs up the complete configured database, then clears customers, leads, bookings, quotations, payments, travellers/documents, notes, instalments, costs, suppliers/payments, reviews/feedback and notifications in one transaction. Packages, images, departures, staff credentials and settings are retained. It never runs automatically. Use a `pg_dump` version matching or newer than the server; set `PG_DUMP_BIN` to its full path if needed. Protected backups are stored in ignored `backend/.data/backups/` when run through npm. Keep these files secure: they contain customer data and credentials. Restore using the matching `pg_restore` into a separate database first.

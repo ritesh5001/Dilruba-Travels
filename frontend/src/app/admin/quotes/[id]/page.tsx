@@ -46,9 +46,12 @@ export default function QuoteDetailPage() {
         title={`Quote ${q.reference}`}
         subtitle={<>{q.customer.name} · {formatINR(q.total)} · created {formatDate(q.createdAt)}{q.createdBy ? ` by ${q.createdBy}` : ""} · <QuoteBadge status={q.status} /></>}
         actions={
-          q.bookingId ? (
+          <>
+          <a href={`/api/admin/quotes/${q.id}/pdf`} className="btn btn-outline !py-2">Download letterhead PDF</a>
+          {q.bookingId ? (
             <Link href={`/admin/bookings/${q.bookingId}`} className="btn btn-primary !py-2">Open booking</Link>
-          ) : null
+          ) : null}
+          </>
         }
       />
       {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}

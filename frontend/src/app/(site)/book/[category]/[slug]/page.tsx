@@ -49,7 +49,7 @@ export default async function BookPackagePage(props: PageProps<"/book/[category]
           <div className="mt-6">
             {/* The form reads the referral code from the browser, so it renders on the client. */}
             <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-sand" aria-busy="true" />}>
-              <BookingForm pkg={{ category: p.category, slug: p.slug, title: p.title, departures: p.departures }} />
+              <BookingForm pkg={p} />
             </Suspense>
           </div>
         </section>

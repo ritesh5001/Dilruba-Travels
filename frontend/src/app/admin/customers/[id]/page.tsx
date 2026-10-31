@@ -154,11 +154,11 @@ export default function CustomerDetailPage() {
 
         <Card title="Details" className="h-fit">
           <form
-            key={`${c.name}-${c.email}`}
+            key={`${c.name}-${c.email}-${c.phone}`}
             onSubmit={async (e) => {
               e.preventDefault();
               const f = new FormData(e.currentTarget);
-              if (await mutate("", "PATCH", { name: f.get("name"), email: f.get("email") })) setSaved(true);
+              if (await mutate("", "PATCH", { name: f.get("name"), email: f.get("email"), phone: f.get("phone") })) setSaved(true);
             }}
             className="grid gap-4"
           >
@@ -171,9 +171,8 @@ export default function CustomerDetailPage() {
               <input id="c-email" name="email" type="email" defaultValue={c.email ?? ""} placeholder="Needed for booking emails" readOnly={!canWrite} className="field" />
             </div>
             <div>
-              <p className="label">Phone</p>
-              <p className="text-sm">{c.phone}</p>
-              <p className="mt-1 text-xs text-muted">The phone number identifies the customer, so it can&apos;t be edited here.</p>
+              <label htmlFor="c-phone" className="label">Contact number</label>
+              <input id="c-phone" name="phone" type="tel" defaultValue={c.phone} required readOnly={!canWrite} className="field" />
             </div>
             {canWrite && <button type="submit" disabled={action.busy} className="btn btn-outline disabled:opacity-50">Save</button>}
             {saved && <p role="status" className="text-sm text-[#0f7a3a]">Saved.</p>}

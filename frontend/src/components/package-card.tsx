@@ -1,3 +1,4 @@
+import { formatDay } from "@dilruba/shared/ops";
 import Link from "next/link";
 import { ArrowLeftRight, CalendarDays } from "lucide-react";
 import { formatPrice, packageHref, type TravelPackage } from "@/lib/packages";
@@ -34,6 +35,7 @@ export function PackageCard({ pkg, className = "" }: { pkg: TravelPackage; class
           <ArrowLeftRight className="size-4 text-brand" aria-hidden />
           <span>{pkg.route[1]}</span>
         </p>
+        {pkg.departures?.[0] && <p className="mt-2 text-sm font-semibold text-brand">Departure: {formatDay(pkg.departures[0].startDate)}</p>}
         <h3 className="mt-1 line-clamp-1 text-sm text-muted">{pkg.title}</h3>
         <p className="mt-1.5 text-sm">
           {price ? (

@@ -33,6 +33,7 @@ export type Draft = {
   nights: string;
   tier: string;
   startingPrice: string;
+  roomPrices: Record<"single" | "double" | "triple" | "quad", string>;
   sharing: string;
   routeFrom: string;
   routeTo: string;
@@ -61,6 +62,7 @@ export function blankDraft(category: CategorySlug): Draft {
     nights: "14",
     tier: "",
     startingPrice: "",
+    roomPrices: { single: "", double: "", triple: "", quad: "" },
     sharing: "",
     routeFrom: "Mumbai",
     routeTo: "",
@@ -91,6 +93,7 @@ export function draftFromPackage(p: AdminPackage): Draft {
     nights: String(p.nights),
     tier: p.tier ?? "",
     startingPrice: p.startingPrice === null ? "" : String(p.startingPrice),
+    roomPrices: { single: String(p.roomPrices?.single ?? ""), double: String(p.roomPrices?.double ?? ""), triple: String(p.roomPrices?.triple ?? ""), quad: String(p.roomPrices?.quad ?? "") },
     sharing: p.sharing ?? "",
     routeFrom: p.route[0],
     routeTo: p.route[1],
@@ -124,6 +127,7 @@ function toInput(d: Draft) {
     tier: d.tier || null,
     startingPrice: d.startingPrice.trim() === "" ? null : d.startingPrice.replace(/[,\s₹]/g, ""),
     sharing: d.sharing || null,
+    roomPrices: Object.fromEntries(Object.entries(d.roomPrices).map(([k, v]) => [k, v.trim() ? Number(v) : null])),
     routeFrom: d.routeFrom,
     routeTo: d.routeTo,
     places: splitLines(d.places.replace(/,/g, "\n")),
@@ -246,6 +250,10 @@ export function PackageEditor({ initial, id }: { initial: Draft; id?: number }) 
                   {packageTiers.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
+              {(["single", "double", "triple", "quad"] as const).map((room) => (
+                <Text key={room} label={`${room[0].toUpperCase() + room.slice(1)} sharing (₹ per person)`} type="number" value={d.roomPrices[room]} onChange={(v) => set("roomPrices", { ...d.roomPrices, [room]: v })} hint="Leave empty for price on request." />
+              ))}
+              <Link href="/admin/departures" className="text-sm text-brand underline">Manage fixed departure dates for this package</Link>
               <Text label="Room sharing" value={d.sharing} onChange={(v) => set("sharing", v)} placeholder="e.g. Quad / Triple / Double" />
               <Area label="Places covered" value={d.places} onChange={(v) => set("places", v)} rows={2} hint="One per line (or comma separated)." />
               <Text label="Route from" value={d.routeFrom} onChange={(v) => set("routeFrom", v)} />

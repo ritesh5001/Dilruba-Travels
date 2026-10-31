@@ -79,6 +79,7 @@ export function QuoteView() {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <section className="rounded-[1.75rem] border border-line bg-white p-6 shadow-xl shadow-black/5 sm:p-8">
+        <a href={`/api/quotes/${encodeURIComponent(ref)}/pdf?t=${encodeURIComponent(token)}`} className="btn btn-outline mb-4">Download letterhead PDF</a>
         <p className="text-sm text-muted">Quote {quote.reference} for {quote.customerName}</p>
         <h2 className="mt-1 font-display text-2xl font-semibold sm:text-3xl">{quote.title}</h2>
         <ul className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted">

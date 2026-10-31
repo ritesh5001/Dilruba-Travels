@@ -49,6 +49,9 @@ export const bookingRequestSchema = z.object({
   name: z.string().trim().min(2, "Please enter the lead traveller's name").max(80),
   email: z.email("Please enter a valid email address").trim().max(160),
   phone: phoneSchema,
+  mobile: phoneSchema.optional(),
+  passportNumber: z.string().trim().min(5).max(30).regex(/^[a-zA-Z0-9 -]+$/, "Enter a valid passport number").optional(),
+  roomType: z.enum(["single", "double", "triple", "quad"]).optional(),
   travelMonth: z
     .string()
     .trim()

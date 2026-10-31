@@ -479,6 +479,14 @@ migrations["0007_refunds_and_more_packages"] = {
   },
 };
 
+migrations["0008_room_prices_and_booking_details"] = {
+  async up(db: Kysely<any>) {
+    await db.schema.alterTable("packages").addColumn("room_prices", "jsonb", (c) => c.notNull().defaultTo(sql`'{}'::jsonb`)).execute();
+    await db.schema.alterTable("bookings").addColumn("mobile", "text").addColumn("passport_number", "text").addColumn("room_type", "text").execute();
+    await db.schema.alterTable("bookings").addCheckConstraint("bookings_room_type", sql`room_type in ('single', 'double', 'triple', 'quad')`).execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

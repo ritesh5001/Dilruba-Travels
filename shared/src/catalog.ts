@@ -36,6 +36,7 @@ export type TravelPackage = {
   tier?: (typeof packageTiers)[number];
   startingPrice: number | null;
   sharing?: string;
+  roomPrices?: Partial<Record<"single" | "double" | "triple" | "quad", number | null>>;
   route: [string, string];
   places: string[];
   image: string;
@@ -92,6 +93,7 @@ export const packageInputSchema = z
     nights: z.coerce.number().int().min(0).max(90),
     tier: z.enum(packageTiers).nullable().optional(),
     startingPrice: z.coerce.number().int().min(0).max(10_000_000).nullable(),
+    roomPrices: z.object({ single: z.number().int().positive().max(10_000_000).nullable().optional(), double: z.number().int().positive().max(10_000_000).nullable().optional(), triple: z.number().int().positive().max(10_000_000).nullable().optional(), quad: z.number().int().positive().max(10_000_000).nullable().optional() }).default({}),
     sharing: z.string().trim().max(80).nullable().optional(),
     routeFrom: line(60),
     routeTo: line(60),

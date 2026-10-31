@@ -90,6 +90,9 @@ async function loadBooking(id: number, showCosts: boolean): Promise<AdminBooking
     packageCategory: row.package_category,
     packageSlug: row.package_slug,
     customerNotes: row.customer_notes,
+    mobile: row.mobile,
+    passportNumber: row.passport_number,
+    roomType: row.room_type,
     leadId: row.lead_id,
     dueNow: dueNow(row, instalments),
     customerLink: bookingLink(row),
@@ -129,6 +132,12 @@ const updateSchema = z
     totalAmount: rupees.nullable().optional(),
     depositAmount: rupees.nullable().optional(),
     tcsAmount: rupees.optional(),
+    customerNotes: z.string().trim().max(1000).nullable().optional(),
+    mobile: z.string().trim().regex(/^[+\d][\d\s-]{7,16}$/).nullable().optional(),
+    passportNumber: z.string().trim().min(5).max(30).regex(/^[a-zA-Z0-9 -]+$/).nullable().optional(),
+    roomType: z.enum(["single", "double", "triple", "quad"]).nullable().optional(),
+    packageCategory: z.string().trim().max(40).nullable().optional(),
+    packageSlug: z.string().trim().max(120).nullable().optional(),
     packageTitle: z.string().trim().min(1).max(160).optional(),
     travelMonth: z.string().trim().regex(/^\d{4}-\d{2}$/).nullable().optional(),
     adults: z.coerce.number().int().min(1).max(50).optional(),
@@ -175,6 +184,12 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
   const priceChanged =
     changed(toPaise(data.totalAmount), before.total_amount) || changed(toPaise(data.depositAmount), before.deposit_amount) || changed(toPaise(data.tcsAmount), before.tcs_amount);
   const tripChanged =
+    changed(data.customerNotes, before.customer_notes) ||
+    changed(data.mobile, before.mobile) ||
+    changed(data.passportNumber, before.passport_number) ||
+    changed(data.roomType, before.room_type) ||
+    changed(data.packageCategory, before.package_category) ||
+    changed(data.packageSlug, before.package_slug) ||
     changed(data.status, before.status) ||
     changed(data.packageTitle, before.package_title) ||
     changed(data.travelMonth, before.travel_month) ||
@@ -213,6 +228,12 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
         deposit_amount: deposit,
         tcs_amount: data.tcsAmount === undefined ? undefined : toPaise(data.tcsAmount)!,
         package_title: data.packageTitle,
+        package_category: data.packageCategory,
+        package_slug: data.packageSlug,
+        customer_notes: data.customerNotes,
+        mobile: data.mobile,
+        passport_number: data.passportNumber?.toUpperCase() ?? data.passportNumber,
+        room_type: data.roomType,
         travel_month: data.travelMonth,
         adults: data.adults,
         children: data.children,
@@ -228,6 +249,10 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
     if (b.total_amount !== before.total_amount) changes.push(`total ${formatINR(before.total_amount)} → ${formatINR(b.total_amount)}`);
     if (b.deposit_amount !== before.deposit_amount) changes.push(`deposit ${formatINR(before.deposit_amount)} → ${formatINR(b.deposit_amount)}`);
     if (b.tcs_amount !== before.tcs_amount) changes.push(`TCS ${formatINR(before.tcs_amount)} → ${formatINR(b.tcs_amount)}`);
+    if (b.customer_notes !== before.customer_notes) changes.push("customer notes updated");
+    if (b.mobile !== before.mobile || b.passport_number !== before.passport_number) changes.push("contact / passport details updated");
+    if (b.room_type !== before.room_type) changes.push(`room sharing → ${b.room_type ?? "unspecified"}`);
+    if (b.package_category !== before.package_category || b.package_slug !== before.package_slug) changes.push("package link updated");
     if (b.package_title !== before.package_title) changes.push(`package → ${b.package_title}`);
     if (b.travel_month !== before.travel_month) changes.push(`travel month → ${b.travel_month ?? "flexible"}`);
     if (b.adults !== before.adults || b.children !== before.children) changes.push(`travellers → ${b.adults} adults, ${b.children} children`);
