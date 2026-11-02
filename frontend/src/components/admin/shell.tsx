@@ -28,11 +28,11 @@ import { NotificationBell } from "./notification-bell";
 // Each item shows only for roles with its permission (the server checks again on every request).
 const nav: { href: string; label: string; icon: typeof LayoutDashboard; needs?: Permission }[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/customers", label: "Customers", icon: Users, needs: "customers.read" },
   { href: "/admin/leads", label: "Leads", icon: Inbox, needs: "leads.read" },
   { href: "/admin/quotes", label: "Quotes", icon: FileText, needs: "leads.read" },
   { href: "/admin/bookings", label: "Bookings", icon: CalendarCheck, needs: "bookings.read" },
   { href: "/admin/departures", label: "Departures", icon: PlaneTakeoff, needs: "bookings.read" },
-  { href: "/admin/customers", label: "Customers", icon: Users, needs: "customers.read" },
   { href: "/admin/suppliers", label: "Suppliers", icon: Truck, needs: "costs" },
   { href: "/admin/packages", label: "Packages", icon: Package, needs: "catalog.write" },
   { href: "/admin/reviews", label: "Reviews", icon: Star, needs: "catalog.write" },

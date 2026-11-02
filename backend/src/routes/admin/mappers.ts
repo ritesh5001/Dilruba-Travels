@@ -3,7 +3,7 @@ import type { CategorySlug } from "@dilruba/shared/catalog";
 import { quoteTotal, type AdminCost, type AdminDeparture, type AdminQuote, type AdminTraveller, type TravellerDocument } from "@dilruba/shared/ops";
 import { db } from "../../db/index.ts";
 import type { Booking, BookingCost, Departure, Lead, Note, Payment, Quote, Traveller } from "../../db/schema.ts";
-import { quoteLink } from "../../email/templates.ts";
+import { quoteLink, quotePdfLink } from "../../email/templates.ts";
 
 const iso = (d: Date) => d.toISOString();
 
@@ -223,5 +223,6 @@ export function toAdminQuote(q: Quote & CustomerCols): AdminQuote {
     createdBy: q.created_by,
     createdAt: iso(q.created_at),
     link: quoteLink(q),
+    pdfLink: quotePdfLink(q),
   };
 }

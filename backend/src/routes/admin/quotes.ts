@@ -1,4 +1,4 @@
-import { downloadQuotePdf } from "../../services/quote-pdf.ts";
+import { downloadQuotePdf, quotePdf, quotePdfName } from "../../services/quote-pdf.ts";
 import { getSettings } from "../../services/settings.ts";
 import { toPublicQuote } from "../../services/quotes.ts";
 import type { Paged } from "@dilruba/shared/crm";
@@ -144,7 +144,9 @@ quotesRouter.post("/:id/send", async (req, res) => {
   const customer = await db.selectFrom("customers").selectAll().where("id", "=", q.customer_id).executeTakeFirstOrThrow();
   if (data.email) {
     if (!customer.email) return void res.status(400).json({ ok: false, error: "This customer has no email. Share the quote link on WhatsApp instead." });
-    const sent = await sendEmail(quoteEmail(q, customer));
+    // The letterhead PDF goes with the email, so they have the quotation as a document too.
+    const pdf = await quotePdf(await toPublicQuote({ ...q, status: "sent", sent_at: new Date() }, customer), await getSettings());
+    const sent = await sendEmail({ ...quoteEmail(q, customer), attachments: [{ filename: quotePdfName(q), content: pdf }] });
     if (!sent) return void res.status(502).json({ ok: false, error: "The email could not be sent. Check the email settings and try again." });
   }
   await db.updateTable("quotes").set({ status: "sent", sent_at: new Date(), updated_at: new Date() }).where("id", "=", id).execute();

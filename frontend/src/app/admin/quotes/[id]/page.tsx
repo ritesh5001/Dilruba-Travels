@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Check, CheckCircle2, Copy, ExternalLink, Loader2, Mail, Trash2, XCircle } from "lucide-react";
 import { formatINR, formatTravelMonth } from "@dilruba/shared/booking";
@@ -20,6 +20,21 @@ export default function QuoteDetailPage() {
   const can = useCan();
   const [flash, setFlash] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Phones share the PDF file itself. It's fetched ahead, because the share sheet only opens
+  // straight from a tap (iPhones refuse it after a download in between).
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  useEffect(() => {
+    if (!q || !window.matchMedia("(pointer: coarse)").matches || typeof navigator.canShare !== "function") return;
+    let live = true;
+    fetch(`/api/admin/quotes/${q.id}/pdf`, { credentials: "include" })
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((blob) => {
+        const file = blob && new File([blob], `Dilruba-Quotation-${q.reference}.pdf`, { type: "application/pdf" });
+        if (live && file && navigator.canShare({ files: [file] })) setPdfFile(file);
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [q]);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!q) return <Loading />;
@@ -37,7 +52,22 @@ export default function QuoteDetailPage() {
     return updated;
   }
 
-  const whatsappText = `Assalamu Alaikum ${q.customer.name.split(" ")[0]}, your quote for ${q.title} is ready: ${formatINR(q.total)}${q.validUntil ? `, valid until ${formatDay(q.validUntil)}` : ""}.\n\nSee the full details and accept it here:\n${q.link}\n\nDilruba Travels`;
+  const whatsappText = `Assalamu Alaikum ${q.customer.name.split(" ")[0]}, your quote for ${q.title} is ready: ${formatINR(q.total)}${q.validUntil ? `, valid until ${formatDay(q.validUntil)}` : ""}.\n\nSee the full details and accept it here:\n${q.link}`;
+  const whatsappWithPdf = `${whatsappText}\n\nDownload your quotation (PDF):\n${q.pdfLink}\n\nDilruba Travels`;
+
+  /**
+   * On a phone, share the PDF file itself (the share sheet opens WhatsApp with the file attached).
+   * Elsewhere WhatsApp can't take a file from a link, so the message carries a PDF download link.
+   */
+  function shareOnWhatsApp(e: React.MouseEvent) {
+    if (q!.status === "draft") void send(false);
+    if (!pdfFile) return;
+    e.preventDefault();
+    navigator.share({ files: [pdfFile], text: `${whatsappText}\n\nDilruba Travels` }).catch((err: Error) => {
+      // Cancelled by the user: stay put. Anything else: open the chat with the PDF link instead.
+      if (err.name !== "AbortError") window.location.href = customerWhatsapp(q!.customer.phone, whatsappWithPdf);
+    });
+  }
 
   return (
     <>
@@ -91,10 +121,10 @@ export default function QuoteDetailPage() {
                   {q.status === "draft" ? "Email the quote" : "Email it again"}
                 </button>
                 <a
-                  href={customerWhatsapp(q.customer.phone, whatsappText)}
+                  href={customerWhatsapp(q.customer.phone, whatsappWithPdf)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={() => { if (q.status === "draft") void send(false); }}
+                  onClick={shareOnWhatsApp}
                   className="btn btn-whatsapp"
                 >
                   <WhatsAppIcon className="size-4" /> Send on WhatsApp
@@ -117,6 +147,7 @@ export default function QuoteDetailPage() {
                   </a>
                 )}
               </div>
+              <p className="mt-2 text-xs text-muted">The letterhead PDF goes with both: attached to the email, and on WhatsApp as a file from a phone (a download link from a computer).</p>
               {!q.customer.email && <p className="mt-2 text-xs text-muted">No email on file: share it on WhatsApp, or add their email on the customer page.</p>}
               {q.status === "draft" && <p className="mt-2 text-xs text-muted">Save your changes first. Sharing marks the quote as sent and the lead as quoted.</p>}
             </Card>

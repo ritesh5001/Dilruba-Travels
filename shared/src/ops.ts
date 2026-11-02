@@ -444,6 +444,8 @@ export type AdminQuote = {
   createdAt: string;
   /** The customer's page to view and accept the quote. */
   link: string;
+  /** The letterhead PDF, for sharing on WhatsApp. */
+  pdfLink: string;
 };
 
 /** Admin form: prices in rupees. */
@@ -476,6 +478,9 @@ export type PublicQuote = {
   status: QuoteStatus;
   title: string;
   customerName: string;
+  customerPhone: string;
+  /** When it was sent (or created, for a draft). */
+  issuedAt: string;
   travelMonth: string | null;
   departure: { title: string; startDate: string; endDate: string | null } | null;
   adults: number;
@@ -560,7 +565,12 @@ export const defaultSettings: Settings = {
   // Budget 2026: flat 2% TCS on overseas tour packages from 1 April 2026. Check with your CA.
   tcsRate: 2,
   tcsCategories: categorySlugs.filter((c) => c !== "domestic"),
-  bankDetails: "",
+  bankDetails: [
+    "Account Name: DILRUBA TRAVELS OF INDIA PVT LTD",
+    "Bank Name: Axis Bank (Jogeshwari West Branch)",
+    "Account No: 923020038443202",
+    "IFSC Code: UTIB0002171 (Current Account)",
+  ].join("\n"),
   googleReviewUrl: "",
   referralOffer: "",
   instalmentReminders: true,

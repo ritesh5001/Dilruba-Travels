@@ -24,6 +24,8 @@ export async function toPublicQuote(q: Quote, c: Customer): Promise<PublicQuote>
     status: effectiveStatus(q),
     title: q.title,
     customerName: c.name,
+    customerPhone: c.phone,
+    issuedAt: (q.sent_at ?? q.created_at).toISOString(),
     travelMonth: q.travel_month,
     departure: departure ? { title: departure.title, startDate: departure.start_date, endDate: departure.end_date } : null,
     adults: q.adults,

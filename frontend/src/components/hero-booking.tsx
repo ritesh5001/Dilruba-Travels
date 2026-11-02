@@ -177,29 +177,18 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
             </label>
           </div>
 
-          {choices.length > 0 && (
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-semibold">Package:</span>
-              {choices.map((p) => {
-                const key = `${p.category}/${p.slug}`;
-                const on = p === pkg;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => reset({ key })}
-                    className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${on ? "border-ink bg-ink text-white" : "border-line text-ink/75 hover:border-ink"}`}
-                  >
-                    {p.title}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="sm:col-span-2">
+            {choices.length > 0 && (
+              <div className="sm:col-span-2">
+                <label htmlFor="hero-package" className="label">Package</label>
+                <select id="hero-package" value={pkg ? `${pkg.category}/${pkg.slug}` : ""} onChange={(e) => reset({ key: e.target.value })} className="field appearance-none">
+                  {choices.map((p) => (
+                    <option key={`${p.category}/${p.slug}`} value={`${p.category}/${p.slug}`}>{p.title}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className={choices.length > 0 ? "sm:col-span-2" : "sm:col-span-2 lg:col-span-4"}>
               <label htmlFor="hero-date" className="label">Available dates</label>
               <select
                 id="hero-date"
@@ -239,11 +228,11 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
               <label htmlFor="hero-phone" className="label">Phone / WhatsApp</label>
               <input id="hero-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="+91 98XXX XXXXX" className="field" />
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <label htmlFor="hero-email" className="label">Email{!open && <span className="font-normal text-muted"> (optional)</span>}</label>
               <input id="hero-email" name="email" type="email" autoComplete="email" required={open} placeholder="you@example.com" className="field" />
             </div>
-            <div className="flex items-end">
+            <div className="flex items-end sm:col-span-2">
               <button type="submit" disabled={sending} className="btn btn-primary w-full disabled:opacity-70">
                 {sending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
                 {sending ? "Sending…" : open ? "Book this date" : "Get Free Quote"}

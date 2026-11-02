@@ -1,6 +1,6 @@
 import { config } from "../config.ts";
 
-export type Email = { to: string; subject: string; html: string; text: string };
+export type Email = { to: string; subject: string; html: string; text: string; attachments?: { filename: string; content: Buffer }[] };
 
 /**
  * Sends through Resend's REST API. Never throws: a failed email must not fail the booking
@@ -9,7 +9,8 @@ export type Email = { to: string; subject: string; html: string; text: string };
  */
 export async function sendEmail(email: Email): Promise<boolean> {
   if (!config.RESEND_API_KEY) {
-    console.info(`[email] (not sent: no RESEND_API_KEY) to=${email.to} subject="${email.subject}"\n${email.text}\n`);
+    const files = email.attachments?.map((a) => `${a.filename} (${a.content.length} bytes)`).join(", ");
+    console.info(`[email] (not sent: no RESEND_API_KEY) to=${email.to} subject="${email.subject}"${files ? ` attachments: ${files}` : ""}\n${email.text}\n`);
     return true;
   }
   try {
@@ -23,8 +24,9 @@ export async function sendEmail(email: Email): Promise<boolean> {
         subject: email.subject,
         html: email.html,
         text: email.text,
+        ...(email.attachments?.length ? { attachments: email.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) } : {}),
       }),
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(email.attachments?.length ? 20_000 : 10_000),
     });
     if (!res.ok) {
       console.error(`[email] Resend rejected "${email.subject}" to ${email.to}: ${res.status} ${await res.text()}`);

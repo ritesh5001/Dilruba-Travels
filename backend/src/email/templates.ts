@@ -20,6 +20,11 @@ export function quoteLink(q: Pick<Quote, "reference" | "access_token">) {
   return `${config.PUBLIC_SITE_URL}/quote?ref=${q.reference}&t=${encodeURIComponent(q.access_token)}`;
 }
 
+/** The quotation PDF itself (works once the quote is sent; drafts stay private). */
+export function quotePdfLink(q: Pick<Quote, "reference" | "access_token">) {
+  return `${config.PUBLIC_SITE_URL}/api/quotes/${q.reference}/pdf?t=${encodeURIComponent(q.access_token)}`;
+}
+
 export function referralLink(code: string) {
   return `${config.PUBLIC_SITE_URL}/?ref=${encodeURIComponent(code)}`;
 }
@@ -194,7 +199,7 @@ export function quoteEmail(q: Quote, c: Customer) {
     to: c.email!,
     subject: `Your quote for ${q.title} – ${q.reference}`,
     heading: `Assalamu Alaikum ${c.name.split(" ")[0]}, here is your quote`,
-    intro: "Thank you for your enquiry. Your personalised quote is below. Open it to see the full price breakdown and accept it in one click.",
+    intro: "Thank you for your enquiry. Your personalised quote is below, and the quotation is attached as a PDF. Open it online to see the full price breakdown and accept it in one click.",
     rows,
     button: { label: "View and accept your quote", href: quoteLink(q) },
     footer: helpLine,
