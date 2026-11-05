@@ -4,7 +4,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../../db/index.ts";
 import type { Supplier, SupplierPaymentRow } from "../../db/schema.ts";
-import { currentUser } from "../../lib/auth.ts";
+import { currentUser, requirePermission } from "../../lib/auth.ts";
 import { parseBody, parseId } from "../../lib/util.ts";
 import { supplierLedger, type SupplierTotals } from "../../services/suppliers.ts";
 import { toAdminCost } from "./mappers.ts";
@@ -127,6 +127,33 @@ suppliersRouter.put("/:id", async (req, res) => {
 });
 
 /** Money paid to the supplier (rupees in, paise stored). It pays off their oldest costs first. */
+/**
+ * Deletes a supplier for good with the payments made to them. Costs on bookings stay (they just
+ * no longer point at a supplier), so booking margins don't change. Owners only, as only they see costs.
+ */
+suppliersRouter.delete("/:id", requirePermission("delete"), async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Supplier not found" });
+  const row = await db.transaction().execute(async (trx) => {
+    await trx.deleteFrom("supplier_payments").where("supplier_id", "=", id).execute();
+    await trx.updateTable("booking_costs").set({ supplier_id: null }).where("supplier_id", "=", id).execute();
+    return trx.deleteFrom("suppliers").where("id", "=", id).returning("name").executeTakeFirst();
+  });
+  if (!row) return void res.status(404).json({ ok: false, error: "Supplier not found" });
+  console.info(`[suppliers] ${currentUser(res).name} deleted supplier #${id} (${row.name})`);
+  res.json({ ok: true });
+});
+
+/** Removes a supplier payment entered by mistake (voiding keeps it on record instead). */
+suppliersRouter.delete("/:id/payments/:pid", requirePermission("delete"), async (req, res) => {
+  const id = parseId(req.params.id);
+  const pid = parseId(req.params.pid);
+  if (!id || !pid) return void res.status(404).json({ ok: false, error: "Payment not found" });
+  const row = await db.deleteFrom("supplier_payments").where("id", "=", pid).where("supplier_id", "=", id).returning("id").executeTakeFirst();
+  if (!row) return void res.status(404).json({ ok: false, error: "Payment not found" });
+  res.json(await loadSupplier(id));
+});
+
 suppliersRouter.post("/:id/payments", async (req, res) => {
   const id = parseId(req.params.id);
   const data = parseBody(supplierPaymentSchema, req.body, res);

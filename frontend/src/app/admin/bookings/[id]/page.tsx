@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useParams } from "next/navigation";
-import { Check, Copy, FileText, Loader2, Mail, Phone } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Check, Copy, FileText, Loader2, Mail, Phone, Trash2 } from "lucide-react";
 import {
   bookingStatuses,
   bookingStatusLabels,
@@ -20,7 +20,7 @@ import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { bookingTemplates } from "@/lib/whatsapp-templates";
 import { CostsCard, FeedbackCard, InstalmentsCard, TravellersCard } from "@/components/admin/booking-sections";
 import { BookingBadge, Card, Empty, ErrorBox, Field, Loading, NotesPanel, PageHeader, WhatsAppTemplates, formatDate } from "@/components/admin/ui";
-import { useCan } from "@/components/admin/shell";
+import { useCan, useCanDeleteNote } from "@/components/admin/shell";
 
 const rupees = (paise: number | null) => (paise === null ? "" : String(paise / 100));
 
@@ -28,7 +28,9 @@ export default function BookingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: b, setData, error, reload } = useAdminData<AdminBookingDetail>(`/bookings/${id}`);
   const action = useAction();
+  const router = useRouter();
   const can = useCan();
+  const canDeleteNote = useCanDeleteNote();
   const [flash, setFlash] = useState<string | null>(null);
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
@@ -61,6 +63,23 @@ export default function BookingDetailPage() {
               <Link href={`/admin/bookings/${b.id}/invoice`} className="btn btn-outline !py-2">
                 <FileText className="size-4" aria-hidden /> {b.invoiceNumber ? "Invoice" : "Invoice / receipt"}
               </Link>
+            )}
+            {can("delete") && (
+              <button
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  const money = b.amountPaid > 0 ? ` Its ${formatINR(b.amountPaid)} of payments` : " Its payments";
+                  if (!window.confirm(`Delete booking ${b.reference} for good?${money}, travellers, documents and costs are deleted with it. This can't be undone.`)) return;
+                  void action.run(async () => {
+                    await adminFetch(`/bookings/${id}`, { method: "DELETE" });
+                    router.replace("/admin/bookings");
+                  });
+                }}
+                className="btn btn-outline !py-2 text-brand hover:!border-brand disabled:opacity-50"
+              >
+                <Trash2 className="size-4" aria-hidden /> Delete
+              </button>
             )}
           </>
         }
@@ -97,6 +116,7 @@ export default function BookingDetailPage() {
                       <th className="py-2 pr-3 font-medium">How</th>
                       <th className="py-2 pr-3 font-medium">Details</th>
                       <th className="py-2 text-right font-medium">Amount</th>
+                      {can("delete") && <th className="w-8 py-2"><span className="sr-only">Delete</span></th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">
@@ -110,6 +130,23 @@ export default function BookingDetailPage() {
                         </td>
                         <td className="py-2.5 pr-3 text-muted">{p.note ?? p.providerPaymentId ?? "—"}</td>
                         <td className="whitespace-nowrap py-2.5 text-right font-semibold">{p.status === "refunded" ? `− ${formatINR(p.amount)}` : formatINR(p.amount)}</td>
+                        {can("delete") && (
+                          <td className="py-2.5 pl-2 text-right">
+                            <button
+                              type="button"
+                              disabled={action.busy}
+                              aria-label={`Delete ${p.status === "refunded" ? "refund" : "payment"} of ${formatINR(p.amount)}`}
+                              onClick={() => {
+                                const what = p.status === "refunded" ? "refund" : "payment";
+                                if (!window.confirm(`Delete this ${what} of ${formatINR(p.amount)}? The booking's ${p.status === "refunded" ? "refunded" : "paid"} total goes down by the same amount. Online payments must still be refunded in the gateway.`)) return;
+                                void mutate(`/payments/${p.id}`, "DELETE", undefined, `The ${what} was deleted.`);
+                              }}
+                              className="rounded-md p-1 text-muted hover:text-brand disabled:opacity-50"
+                            >
+                              <Trash2 className="size-4" aria-hidden />
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -125,7 +162,7 @@ export default function BookingDetailPage() {
           <InstalmentsCard key={`plan-${b.instalments.map((i) => i.id).join()}`} b={b} busy={action.busy} mutate={mutate} />
           <TravellersCard b={b} busy={action.busy} mutate={mutate} />
           {b.costs && <CostsCard b={b} busy={action.busy} mutate={mutate} />}
-          <NotesPanel
+          <NotesPanel canDelete={canDeleteNote} onDeleted={reload}
             readOnly={!can("bookings.write") && !can("payments.write") && !can("travellers.write")}
             notes={b.notes}
             onAdd={(body) => mutate("/notes", "POST", { body })}

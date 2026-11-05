@@ -4,17 +4,19 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Send } from "lucide-react";
-import { bookingRequestSchema } from "@dilruba/shared/booking";
-import type { CategorySlug } from "@dilruba/shared/catalog";
+import { bookingRequestSchema, formatINR } from "@dilruba/shared/booking";
+import type { CategorySlug, TravelPackage } from "@dilruba/shared/catalog";
 import { enquirySchema, type services } from "@dilruba/shared/enquiry";
-import { formatDay, type PublicDeparture } from "@dilruba/shared/ops";
+import { formatDay, roomTypeLabels, roomTypes, type PublicDeparture, type RoomType } from "@dilruba/shared/ops";
 import { serviceFor } from "@/lib/packages";
 import { getReferral } from "@/lib/referral";
 import { whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
-/** A published package and its upcoming group dates (possibly none yet). */
-export type BookablePackage = { category: CategorySlug; slug: string; title: string; departures: PublicDeparture[] };
+/** A published package, its upcoming group dates (possibly none yet) and its per-person room prices. */
+export type BookablePackage = { category: CategorySlug; slug: string; title: string; departures: PublicDeparture[]; roomPrices: NonNullable<TravelPackage["roomPrices"]> };
+
+const firstRoom = (p: BookablePackage | undefined): RoomType => roomTypes.find((r) => p?.roomPrices[r] != null) ?? "quad";
 
 const tabs: { label: string; categories: CategorySlug[]; service: (typeof services)[number] }[] = [
   { label: "Umrah", categories: ["umrah"], service: "Umrah" },
@@ -53,6 +55,10 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
   const open = pkg ? hasDates(pkg) : false;
   const [departureId, setDepartureId] = useState("");
   const departure = pkg?.departures.find((d) => String(d.id) === departureId);
+  const [roomType, setRoomType] = useState<RoomType>(() => firstRoom(pkg));
+  const [travellers, setTravellers] = useState({ adults: 2, children: 0 });
+  const unitPrice = pkg?.roomPrices[roomType] ?? null;
+  const pricedRooms = roomTypes.filter((r) => pkg?.roomPrices[r] != null);
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [enquired, setEnquired] = useState<string | null>(null);
@@ -60,6 +66,8 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
   function reset(next: { tab?: number; key?: string }) {
     if (next.tab !== undefined) setTabIndex(next.tab);
     setPkgKey(next.key ?? "");
+    const list = next.tab !== undefined ? inTab(next.tab) : choices;
+    setRoomType(firstRoom(list.find((p) => `${p.category}/${p.slug}` === next.key)));
     setDepartureId("");
     setError(null);
   }
@@ -87,7 +95,7 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
         service: pkg ? serviceFor[pkg.category] : tabs[tabIndex]!.service,
         packageName: pkg?.title,
         travellers: Math.min(99, adults + children),
-        message: `Asked for the next available dates for ${what} (${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}). No dates were open on the website.`,
+        message: `Asked for the next available dates for ${what} (${adults} adult${adults === 1 ? "" : "s"}${children ? `, ${children} child${children === 1 ? "" : "ren"}` : ""}${pricedRooms.length ? `, ${roomTypeLabels[roomType]}` : ""}). No dates were open on the website.`,
         source: "Homepage booking card",
         referralCode: getReferral(),
         website: f.website || undefined,
@@ -116,6 +124,7 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
       packageCategory: pkg.category,
       packageSlug: pkg.slug,
       packageTitle: pkg.title,
+      roomType: pricedRooms.length ? roomType : undefined,
       departureId: departure.id,
       travelMonth: departure.startDate.slice(0, 7),
       referralCode: getReferral(),
@@ -208,15 +217,27 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
                 ))}
               </select>
             </div>
+            {pricedRooms.length > 0 && (
+              <div className="sm:col-span-2">
+                <label htmlFor="hero-room" className="label">Room sharing</label>
+                <select id="hero-room" value={roomType} onChange={(e) => setRoomType(e.target.value as RoomType)} className="field appearance-none">
+                  {roomTypes.map((r) => (
+                    <option key={r} value={r}>
+                      {roomTypeLabels[r]} — {pkg?.roomPrices[r] != null ? `${formatINR(pkg.roomPrices[r]! * 100)} / person` : "price on request"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
               <label htmlFor="hero-adults" className="label">Adults</label>
-              <select id="hero-adults" name="adults" defaultValue="2" className="field appearance-none">
+              <select id="hero-adults" name="adults" value={travellers.adults} onChange={(e) => setTravellers((t) => ({ ...t, adults: Number(e.target.value) }))} className="field appearance-none">
                 {counts(1, 20).map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
             <div>
               <label htmlFor="hero-children" className="label">Children <span className="font-normal text-muted">(under 12)</span></label>
-              <select id="hero-children" name="children" defaultValue="0" className="field appearance-none">
+              <select id="hero-children" name="children" value={travellers.children} onChange={(e) => setTravellers((t) => ({ ...t, children: Number(e.target.value) }))} className="field appearance-none">
                 {counts(0, 10).map((n) => <option key={n} value={n}>{n}</option>)}
               </select>
             </div>
@@ -228,11 +249,12 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
               <label htmlFor="hero-phone" className="label">Phone / WhatsApp</label>
               <input id="hero-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" required placeholder="+91 98XXX XXXXX" className="field" />
             </div>
-            <div className="sm:col-span-2">
+            {/* With the room row, name, phone, email and the button share one row on wide screens. */}
+            <div className={pricedRooms.length ? "sm:col-span-2 lg:col-span-1" : "sm:col-span-2"}>
               <label htmlFor="hero-email" className="label">Email{!open && <span className="font-normal text-muted"> (optional)</span>}</label>
               <input id="hero-email" name="email" type="email" autoComplete="email" required={open} placeholder="you@example.com" className="field" />
             </div>
-            <div className="flex items-end sm:col-span-2">
+            <div className={`flex items-end ${pricedRooms.length ? "sm:col-span-2 lg:col-span-1" : "sm:col-span-2"}`}>
               <button type="submit" disabled={sending} className="btn btn-primary w-full disabled:opacity-70">
                 {sending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Send className="size-4" aria-hidden />}
                 {sending ? "Sending…" : open ? "Book this date" : "Get Free Quote"}
@@ -240,6 +262,14 @@ export function HeroBooking({ packages }: { packages: BookablePackage[] }) {
             </div>
           </div>
 
+          {pricedRooms.length > 0 && (
+            <p className="mt-4 text-sm" aria-live="polite">
+              <span className="font-semibold">
+                {travellers.adults + travellers.children} traveller{travellers.adults + travellers.children === 1 ? "" : "s"} · {unitPrice == null ? "price on request" : `${formatINR(unitPrice * (travellers.adults + travellers.children) * 100)} estimated`}
+              </span>
+              {unitPrice != null && <span className="text-muted"> ({formatINR(unitPrice * 100)} per person, {roomTypeLabels[roomType].toLowerCase()})</span>}
+            </p>
+          )}
           <div className="mt-4 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
             <p className="text-muted">
               {open ? "No payment now: we confirm your seats and email the final price." : "We'll contact you with the next available dates and today's best price."}

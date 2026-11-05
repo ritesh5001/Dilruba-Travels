@@ -17,16 +17,12 @@ export default function CustomersPage() {
   const can = useCan();
   // Adding and deleting: owners and managers (the server checks too).
   const canManage = can("customers.write") && can("leads.all");
+  const canDelete = can("delete");
   const action = useAction();
   const [adding, setAdding] = useState(false);
 
   function remove(c: AdminCustomer) {
-    // Bookings carry payment history, so those customers are kept.
-    if (c.bookingCount > 0) {
-      action.setError(`${c.name} has ${c.bookingCount} booking${c.bookingCount === 1 ? "" : "s"}, so they can't be deleted (their payment history must be kept). Cancel the bookings instead.`);
-      return;
-    }
-    if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes and notes? This can't be undone.`)) return;
+    if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes, notes${c.bookingCount > 0 ? ` and their ${c.bookingCount} booking${c.bookingCount === 1 ? "" : "s"} (payments, travellers and documents)` : ""}? This can't be undone.`)) return;
     void action.run(async () => {
       await adminFetch(`/customers/${c.id}`, { method: "DELETE" });
       await reload();
@@ -94,7 +90,7 @@ export default function CustomersPage() {
                   <th className="px-4 py-3 text-right font-medium">Bookings</th>
                   <th className="px-4 py-3 text-right font-medium">Paid</th>
                   <th className="px-4 py-3 font-medium">Since</th>
-                  {canManage && <th className="px-4 py-3"><span className="sr-only">Delete</span></th>}
+                  {canDelete && <th className="px-4 py-3"><span className="sr-only">Delete</span></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
@@ -109,15 +105,15 @@ export default function CustomersPage() {
                     <td className="px-4 py-3 text-right">{c.bookingCount}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-right">{formatINR(c.totalPaid)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-muted">{formatDate(c.createdAt)}</td>
-                    {canManage && (
+                    {canDelete && (
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
                           disabled={action.busy}
                           onClick={() => remove(c)}
-                          title={c.bookingCount > 0 ? "Has bookings: can't be deleted" : `Delete ${c.name}`}
+                          title={`Delete ${c.name}`}
                           aria-label={`Delete ${c.name}`}
-                          className={`rounded-full p-2 hover:bg-sand disabled:opacity-50 ${c.bookingCount > 0 ? "text-muted/50" : "text-muted hover:text-brand"}`}
+                          className="rounded-full p-2 text-muted hover:bg-sand hover:text-brand disabled:opacity-50"
                         >
                           <Trash2 className="size-4" aria-hidden />
                         </button>

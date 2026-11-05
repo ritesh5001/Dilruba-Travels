@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2, Search, Trash2 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { bookingStatusLabels, leadStatusLabels, type BookingStatus, type LeadStatus } from "@dilruba/shared/booking";
 import type { AdminNote } from "@dilruba/shared/crm";
 import { quoteStatusLabels, visaStatusLabels, type InstalmentState, type QuoteStatus, type VisaStatus } from "@dilruba/shared/ops";
 import { WhatsAppIcon } from "@/components/icons";
+import { adminFetch } from "@/lib/admin-api";
 
 export function formatDate(iso: string, withTime = false) {
   return new Date(iso).toLocaleString("en-IN", {
@@ -254,9 +255,35 @@ export function Pagination({ page, pageSize, total }: { page: number; pageSize: 
 }
 
 /** Timeline of staff notes and automatic events, with a box to add a note. */
-export function NotesPanel({ notes, onAdd, readOnly }: { notes: AdminNote[]; onAdd: (body: string) => Promise<boolean>; readOnly?: boolean }) {
+export function NotesPanel({
+  notes,
+  onAdd,
+  readOnly,
+  canDelete,
+  onDeleted,
+}: {
+  notes: AdminNote[];
+  onAdd: (body: string) => Promise<boolean>;
+  readOnly?: boolean;
+  /** Which notes show a delete button. */
+  canDelete?: (n: AdminNote) => boolean;
+  /** Called after a note is deleted, to reload the page's data. */
+  onDeleted?: () => void;
+}) {
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function remove(n: AdminNote) {
+    if (!window.confirm(`Delete this ${n.kind === "note" ? "note" : "activity line"}? This can't be undone.`)) return;
+    setDeleteError(null);
+    try {
+      await adminFetch(`/notes/${n.id}`, { method: "DELETE" });
+      onDeleted?.();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Couldn't delete that note");
+    }
+  }
   return (
     <Card title="Notes & activity">
       {!readOnly && (
@@ -277,13 +304,24 @@ export function NotesPanel({ notes, onAdd, readOnly }: { notes: AdminNote[]; onA
         </button>
       </form>
       )}
+      {deleteError && <p role="alert" className="mt-3 text-sm text-brand">{deleteError}</p>}
       {notes.length === 0 ? (
         <Empty>No notes yet.</Empty>
       ) : (
         <ol className="mt-4 space-y-3 border-t border-line pt-4">
           {notes.map((n) => (
-            <li key={n.id} className={`rounded-xl px-3 py-2.5 text-sm ${n.kind === "note" ? "bg-cream ring-1 ring-line" : "text-muted"}`}>
-              <p className="whitespace-pre-wrap">{n.body}</p>
+            <li key={n.id} className={`group relative rounded-xl px-3 py-2.5 text-sm ${n.kind === "note" ? "bg-cream ring-1 ring-line" : "text-muted"}`}>
+              {canDelete?.(n) && (
+                <button
+                  type="button"
+                  onClick={() => void remove(n)}
+                  aria-label="Delete note"
+                  className="absolute right-2 top-2 rounded-md p-1 text-muted opacity-60 hover:bg-white hover:text-brand hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                >
+                  <Trash2 className="size-3.5" aria-hidden />
+                </button>
+              )}
+              <p className="whitespace-pre-wrap pr-6">{n.body}</p>
               <p className="mt-1 text-xs text-muted">
                 {n.kind === "note" ? "Note" : "Activity"}{n.author && n.kind === "note" ? ` by ${n.author}` : ""} · {formatDate(n.createdAt, true)}
               </p>

@@ -208,6 +208,19 @@ adminRouter.use("/reports", reportsRouter);
 adminRouter.use("/suppliers", requirePermission("costs"), suppliersRouter);
 adminRouter.use("/notifications", notificationsRouter);
 adminRouter.use("/staff", requireOwner, staffRouter);
+
+/** Deletes a note or activity line: your own notes, or any of them for owners and managers. */
+adminRouter.delete("/notes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return void res.status(404).json({ ok: false, error: "Note not found" });
+  const me = currentUser(res);
+  const note = await db.selectFrom("notes").select(["kind", "author"]).where("id", "=", id).executeTakeFirst();
+  if (!note) return void res.status(404).json({ ok: false, error: "Note not found" });
+  const own = note.kind === "note" && note.author === me.name;
+  if (!own && !userCan(res, "delete")) return void res.status(403).json({ ok: false, error: "You can delete only your own notes" });
+  await db.deleteFrom("notes").where("id", "=", id).execute();
+  res.json({ ok: true });
+});
 adminRouter.use("/settings", requirePermission("settings"), settingsRouter);
 
 /** Active staff, for "assign to" menus (everyone can see who their colleagues are). */

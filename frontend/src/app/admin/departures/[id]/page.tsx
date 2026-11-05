@@ -10,12 +10,14 @@ import { formatDay, passportProblem, roomTypeLabels } from "@dilruba/shared/ops"
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { DepartureForm } from "@/components/admin/departure-form";
 import { BookingBadge, Card, Empty, ErrorBox, Loading, PageHeader, VisaBadge, exportUrl } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 export default function DepartureDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: d, setData, error, reload } = useAdminData<AdminDepartureDetail>(`/departures/${id}`);
   const action = useAction();
+  const can = useCan();
   const [editing, setEditing] = useState(false);
   const [view, setView] = useState<"manifest" | "rooms">("manifest");
 
@@ -67,16 +69,19 @@ export default function DepartureDetailPage() {
                 }
               }}
             />
-            {d.bookings.length === 0 && (
+            {(d.bookings.length === 0 || can("delete")) && (
               <button
                 type="button"
                 disabled={action.busy}
-                onClick={() =>
+                onClick={() => {
+                  const n = d.bookings.length;
+                  const warning = n ? ` Its ${n} booking${n === 1 ? " stays" : "s stay"} but will no longer be on a group date.` : "";
+                  if (!window.confirm(`Delete ${d.title}?${warning} This can't be undone.`)) return;
                   void action.run(async () => {
                     await adminFetch(`/departures/${id}`, { method: "DELETE" });
                     router.replace("/admin/departures");
-                  })
-                }
+                  });
+                }}
                 className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand"
               >
                 <Trash2 className="size-4" aria-hidden /> Delete departure

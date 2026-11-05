@@ -5,7 +5,9 @@ import { z } from "zod";
 import { db } from "../../db/index.ts";
 import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { likePattern, normalizePhone, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
+import { refreshWebsite } from "../../services/catalog.ts";
 import { ensureReferralCode } from "../../services/crm.ts";
+import { deleteBookings } from "../../services/deletes.ts";
 import { bookingsQuery, leadsQuery, toAdminBooking, toAdminLead, toAdminNote } from "./mappers.ts";
 
 export const customersRouter = Router();
@@ -171,21 +173,20 @@ customersRouter.post("/:id/referral-code", async (req, res) => {
 });
 
 /**
- * Deletes a customer with their leads, quotes and notes (owners and managers only). Refused when
- * they have bookings, so payment and invoice history is never lost: cancel the bookings instead.
+ * Deletes a customer for good with everything about them: enquiries, quotes, notes, and their
+ * bookings with the payments, travellers and documents on them. Owners and managers only.
  */
-customersRouter.delete("/:id", requirePermission("leads.all"), async (req, res) => {
+customersRouter.delete("/:id", requirePermission("delete"), async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Customer not found" });
-  const bookings = await db.selectFrom("bookings").select((eb) => eb.fn.countAll<number>().as("n")).where("customer_id", "=", id).executeTakeFirstOrThrow();
-  if (Number(bookings.n) > 0) {
-    return void res.status(409).json({
-      ok: false,
-      error: `This customer has ${bookings.n} booking${Number(bookings.n) === 1 ? "" : "s"}, so they can't be deleted (their payment history must be kept). Cancel the bookings instead.`,
-    });
-  }
-  const row = await db.deleteFrom("customers").where("id", "=", id).returning("name").executeTakeFirst();
-  if (!row) return void res.status(404).json({ ok: false, error: "Customer not found" });
-  console.info(`[customers] ${currentUser(res).name} deleted customer #${id} (${row.name})`);
-  res.json({ ok: true });
+  const result = await db.transaction().execute(async (trx) => {
+    const bookings = await trx.selectFrom("bookings").select("id").where("customer_id", "=", id).execute();
+    const removed = await deleteBookings(trx, bookings.map((b) => b.id));
+    const row = await trx.deleteFrom("customers").where("id", "=", id).returning("name").executeTakeFirst();
+    return row ? { name: row.name, bookings: removed } : null;
+  });
+  if (!result) return void res.status(404).json({ ok: false, error: "Customer not found" });
+  console.info(`[customers] ${currentUser(res).name} deleted customer #${id} (${result.name}) with ${result.bookings} booking(s)`);
+  void refreshWebsite();
+  res.json({ ok: true, bookings: result.bookings });
 });

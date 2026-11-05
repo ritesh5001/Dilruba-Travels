@@ -6,7 +6,7 @@ import { Loader2, Plus, Trash2 } from "lucide-react";
 import { formatINR } from "@dilruba/shared/booking";
 import type { AdminPackage } from "@dilruba/shared/catalog";
 import type { AdminCustomer, AdminLeadDetail, Paged } from "@dilruba/shared/crm";
-import { formatDay, todayIST, type AdminDeparture, type AdminQuote, type QuoteInput } from "@dilruba/shared/ops";
+import { formatDay, roomTypeLabels, roomTypes, todayIST, type AdminDeparture, type AdminQuote, type QuoteInput, type RoomType } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { Card, ErrorBox } from "./ui";
 
@@ -17,7 +17,8 @@ const rupees = (paise: number | null | undefined) => (paise == null ? "" : Strin
 
 /**
  * Create or edit a quote. A new quote starts from the lead (customer, package, dates, people) and
- * picking a package fills the title, inclusions and a first price line from its starting price.
+ * picking a package fills the title, inclusions and a first price line. With room prices on the
+ * package, the room sharing choice sets that line's price (quad, triple, double or single).
  */
 export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead?: AdminLeadDetail; onSaved?: (q: AdminQuote) => void }) {
   const router = useRouter();
@@ -42,6 +43,10 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
   const [inclusions, setInclusions] = useState((quote?.inclusions ?? []).join("\n"));
   const [message, setMessage] = useState(quote?.message ?? "");
 
+  const pkg = packages?.find((x) => x.id === packageId);
+  const pricedRooms = roomTypes.filter((room) => pkg?.roomPrices?.[room] != null);
+  const [roomType, setRoomType] = useState<RoomType | "">("");
+
   const { data: departures } = useAdminData<AdminDeparture[]>(packageId ? `/departures?package=${packageId}` : null);
 
   const total = useMemo(() => {
@@ -49,17 +54,29 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
     return Math.max(0, sum - (Number(discount) || 0));
   }, [lines, discount]);
 
+  /** The first price line: the package at the chosen room sharing's price (or its starting price). */
+  function packageLine(p: AdminPackage, room: RoomType | ""): Line {
+    const price = (room && p.roomPrices?.[room]) || p.startingPrice;
+    const sharing = room ? roomTypeLabels[room] : p.sharing;
+    return { label: `${p.title}${sharing ? ` – ${sharing}` : ""}, per person`, quantity: lines[0]?.quantity || adults, unitPrice: price ? String(price) : "" };
+  }
+
   function choosePackage(id: number | "") {
     setPackageId(id);
     setDepartureId("");
     const p = packages?.find((x) => x.id === id);
-    if (!p) return;
+    if (!p) return setRoomType("");
     setTitle(p.title);
     setInclusions(p.inclusions.join("\n"));
+    const room = roomTypes.find((r) => p.roomPrices?.[r] != null) ?? "";
+    setRoomType(room);
     // Only fill the price line if staff haven't started pricing yet.
-    if (p.startingPrice && lines.length === 1 && !lines[0]!.unitPrice) {
-      setLines([{ label: `${p.title}${p.sharing ? ` (${p.sharing})` : ""}, per person`, quantity: adults, unitPrice: String(p.startingPrice) }]);
-    }
+    if (lines.length === 1 && !lines[0]!.unitPrice) setLines([packageLine(p, room)]);
+  }
+
+  function chooseRoom(room: RoomType | "") {
+    setRoomType(room);
+    if (pkg) setLines((ls) => [packageLine(pkg, room), ...ls.slice(1)]);
   }
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -125,6 +142,20 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
               ))}
             </select>
           </div>
+          {pricedRooms.length > 0 && (
+            <div className="sm:col-span-2">
+              <label htmlFor="q-room" className="label">Room sharing</label>
+              <select id="q-room" value={roomType} onChange={(e) => chooseRoom(e.target.value as RoomType | "")} className="field appearance-none">
+                <option value="">{quote ? "Keep the price lines as they are" : "Starting price"}</option>
+                {roomTypes.map((room) => (
+                  <option key={room} value={room} disabled={pkg?.roomPrices?.[room] == null}>
+                    {roomTypeLabels[room]} — {pkg?.roomPrices?.[room] != null ? `${formatINR(pkg.roomPrices[room]! * 100)} / person` : "no price set"}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted">Sets the price of the first line below. Add more lines for mixed rooms (e.g. 2 quad + 2 double).</p>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="q-title" className="label">Quote title</label>
             <input id="q-title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={160} placeholder="e.g. 15-day Economy Umrah, Ramadan 2027" className="field" />

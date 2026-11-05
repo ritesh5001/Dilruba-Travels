@@ -63,7 +63,7 @@ const steps = [
 
 export default async function HomePage() {
   // Packages aren't listed on the home page; the booking card offers each package's open dates.
-  const bookable: BookablePackage[] = (await getPackages()).map((p) => ({ category: p.category, slug: p.slug, title: p.title, departures: p.departures ?? [] }));
+  const bookable: BookablePackage[] = (await getPackages()).map((p) => ({ category: p.category, slug: p.slug, title: p.title, departures: p.departures ?? [], roomPrices: p.roomPrices ?? {} }));
 
   return (
     <>

@@ -10,7 +10,7 @@ import { lostReasons } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { leadTemplates } from "@/lib/whatsapp-templates";
 import { BookingBadge, Card, Empty, ErrorBox, Field, LeadBadge, Loading, NotesPanel, PageHeader, QuoteBadge, WhatsAppTemplates, formatDate } from "@/components/admin/ui";
-import { useCan } from "@/components/admin/shell";
+import { useCan, useCanDeleteNote } from "@/components/admin/shell";
 
 /** "2026-10-22T10:00" in the browser's time zone, for <input type="datetime-local">. */
 function toLocalInput(d: Date) {
@@ -32,6 +32,7 @@ export default function LeadDetailPage() {
   const { data: team } = useAdminData<StaffRef[]>("/team");
   const action = useAction();
   const can = useCan();
+  const canDeleteNote = useCanDeleteNote();
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!lead) return <Loading />;
@@ -61,7 +62,7 @@ export default function LeadDetailPage() {
           <>
             <WhatsAppTemplates phone={lead.customer.phone} templates={leadTemplates(lead, sentQuote?.link)} />
             <a href={`tel:${lead.customer.phone}`} className="btn btn-outline !py-2"><Phone className="size-4" aria-hidden /> Call</a>
-            {can("leads.all") && can("leads.write") && (
+            {can("delete") && (
               <button
                 type="button"
                 disabled={action.busy}
@@ -134,7 +135,7 @@ export default function LeadDetailPage() {
             )}
           </Card>
 
-          <NotesPanel
+          <NotesPanel canDelete={canDeleteNote} onDeleted={reload}
             readOnly={!can("leads.write")}
             notes={lead.notes}
             onAdd={async (body) => {

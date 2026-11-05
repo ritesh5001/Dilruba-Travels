@@ -21,6 +21,7 @@ import {
   UserCog,
   Users,
 } from "lucide-react";
+import type { AdminNote } from "@dilruba/shared/crm";
 import { can, effectiveRole, staffRoleNames, type Me, type Permission } from "@dilruba/shared/ops";
 import { ApiError, adminFetch, clearAdminCache } from "@/lib/admin-api";
 import { NotificationBell } from "./notification-bell";
@@ -54,6 +55,12 @@ export function useMe() {
 export function useCan() {
   const me = useMe();
   return (permission: Permission) => can(me?.role, permission);
+}
+
+/** Notes you can delete: your own, or any note or activity line for owners and managers. */
+export function useCanDeleteNote() {
+  const me = useMe();
+  return (n: AdminNote) => can(me?.role, "delete") || (n.kind === "note" && !!me && n.author === me.name);
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {

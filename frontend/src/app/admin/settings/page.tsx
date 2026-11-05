@@ -38,6 +38,7 @@ export default function SettingsPage() {
                 tcsRate: Number(s("tcsRate")),
                 tcsCategories: f.getAll("tcsCategories"),
                 bankDetails: s("bankDetails"),
+                invoiceTerms: s("invoiceTerms"),
                 googleReviewUrl: s("googleReviewUrl"),
                 referralOffer: s("referralOffer"),
                 instalmentReminders: f.get("instalmentReminders") === "on",
@@ -77,7 +78,13 @@ export default function SettingsPage() {
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="s-bank" className="label">Bank details printed on invoices</label>
-              <textarea id="s-bank" name="bankDetails" rows={3} defaultValue={data.bankDetails} placeholder={"Bank, account name, account number, IFSC\nUPI ID"} className="field resize-none" />
+              <textarea id="s-bank" name="bankDetails" rows={4} defaultValue={data.bankDetails} placeholder={"Bank Name: …\nAccount No: …\nIFSC Code: …"} className="field resize-none" />
+              <p className="mt-1 text-xs text-muted">One per line as &quot;Label: value&quot;, so the invoice lines them up.</p>
+            </div>
+            <div className="sm:col-span-2">
+              <label htmlFor="s-terms" className="label">Terms &amp; conditions printed on invoices</label>
+              <textarea id="s-terms" name="invoiceTerms" rows={6} defaultValue={data.invoiceTerms} placeholder={"IMP: All disputes are subject to Mumbai jurisdiction."} className="field resize-none" />
+              <p className="mt-1 text-xs text-muted">One per line. &quot;LABEL: text&quot; prints the label in its own column.</p>
             </div>
           </div>
         </Card>

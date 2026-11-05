@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
-import { Ban, Loader2, Mail, Pencil, Phone } from "lucide-react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { Ban, Loader2, Mail, Pencil, Phone, Trash2 } from "lucide-react";
 import { formatINR, paymentMethodLabels, paymentMethods } from "@dilruba/shared/booking";
 import { costCategoryLabels, formatDay, supplierTypeLabels, todayIST, type AdminSupplierDetail } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { WhatsAppIcon } from "@/components/icons";
 import { SupplierForm } from "@/components/admin/supplier-form";
 import { Badge, Card, Empty, ErrorBox, Field, Loading, PageHeader, customerWhatsapp, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 const stateBadge = { paid: <Badge color="green">Paid</Badge>, part_paid: <Badge color="blue">Part paid</Badge>, unpaid: <Badge color="amber">Unpaid</Badge> } as const;
 
@@ -18,6 +19,8 @@ export default function SupplierDetailPage() {
   const prefill = useSearchParams().get("pay");
   const { data: s, setData, error, reload } = useAdminData<AdminSupplierDetail>(`/suppliers/${id}`);
   const action = useAction();
+  const can = useCan();
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [today] = useState(() => todayIST());
@@ -51,6 +54,22 @@ export default function SupplierDetailPage() {
             )}
             {s.email && <a href={`mailto:${s.email}`} className="btn btn-outline !py-2"><Mail className="size-4" aria-hidden /> Email</a>}
             {!editing && <button type="button" onClick={() => setEditing(true)} className="btn btn-outline !py-2"><Pencil className="size-4" aria-hidden /> Edit</button>}
+            {can("delete") && (
+              <button
+                type="button"
+                disabled={action.busy}
+                onClick={() => {
+                  if (!window.confirm(`Delete ${s.name} and the ${s.payments.length} payment${s.payments.length === 1 ? "" : "s"} made to them? Costs on bookings stay, without a supplier. This can't be undone.`)) return;
+                  void action.run(async () => {
+                    await adminFetch(`/suppliers/${id}`, { method: "DELETE" });
+                    router.replace("/admin/suppliers");
+                  });
+                }}
+                className="btn btn-outline !py-2 text-brand hover:!border-brand disabled:opacity-50"
+              >
+                <Trash2 className="size-4" aria-hidden /> Delete
+              </button>
+            )}
           </>
         }
       />
@@ -120,6 +139,7 @@ export default function SupplierDetailPage() {
                       </p>
                       {p.voidedAt && <p className="text-xs text-brand">Voided {formatDate(p.voidedAt)}: {p.voidReason}</p>}
                     </div>
+                    <div className="flex items-center gap-3">
                     {!p.voidedAt && (
                       <button
                         type="button"
@@ -133,6 +153,19 @@ export default function SupplierDetailPage() {
                         <Ban className="size-3.5" aria-hidden /> Void
                       </button>
                     )}
+                    {can("delete") && (
+                      <button
+                        type="button"
+                        disabled={action.busy}
+                        onClick={() => {
+                          if (window.confirm(`Delete this payment of ${formatINR(p.amount)} for good? (Void keeps it on record instead.)`)) void run(`/payments/${p.id}`, "DELETE", undefined, "Payment deleted.");
+                        }}
+                        className="inline-flex items-center gap-1 text-xs text-muted hover:text-brand"
+                      >
+                        <Trash2 className="size-3.5" aria-hidden /> Delete
+                      </button>
+                    )}
+                    </div>
                   </li>
                 ))}
               </ul>

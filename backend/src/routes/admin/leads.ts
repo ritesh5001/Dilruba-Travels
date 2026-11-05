@@ -248,7 +248,7 @@ leadsRouter.post("/:id/convert", async (req, res) => {
  * Deletes a lead and its notes (owners and managers only). Quotes and bookings made from it are
  * kept, just no longer linked; the customer's record notes who deleted which enquiry.
  */
-leadsRouter.delete("/:id", requirePermission("leads.all"), async (req, res) => {
+leadsRouter.delete("/:id", requirePermission("delete"), async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Lead not found" });
   const me = currentUser(res);

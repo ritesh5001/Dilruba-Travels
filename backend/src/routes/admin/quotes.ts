@@ -178,10 +178,14 @@ quotesRouter.post("/:id/decline", async (req, res) => {
   res.json(await loadQuote(id));
 });
 
+/** Drafts can be thrown away by whoever writes quotes; sent and accepted ones by owners and managers (a booking made from it stays). */
 quotesRouter.delete("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Quote not found" });
-  const row = await db.deleteFrom("quotes").where("id", "=", id).where("status", "=", "draft").returning("id").executeTakeFirst();
-  if (!row) return void res.status(409).json({ ok: false, error: "Only draft quotes can be deleted" });
+  const q = await db.selectFrom("quotes").select(["status", "reference", "lead_id"]).where("id", "=", id).executeTakeFirst();
+  if (!q) return void res.status(404).json({ ok: false, error: "Quote not found" });
+  if (q.status !== "draft" && !userCan(res, "delete")) return void res.status(403).json({ ok: false, error: "Only an owner or manager can delete a quote that was sent" });
+  await db.deleteFrom("quotes").where("id", "=", id).execute();
+  if (q.lead_id && q.status !== "draft") await addEvent(db, { lead_id: q.lead_id, author: currentUser(res).name, body: `Quote ${q.reference} deleted by ${currentUser(res).name}.` });
   res.json({ ok: true });
 });

@@ -193,19 +193,21 @@ export default function QuoteDetailPage() {
               <Field label="Sent">{q.sentAt ? formatDate(q.sentAt, true) : "Not yet"}</Field>
               <Field label="Answered">{q.respondedAt ? formatDate(q.respondedAt, true) : "—"}</Field>
             </div>
-            {q.status === "draft" && !locked && (
+            {((q.status === "draft" && !locked) || can("delete")) && (
               <button
                 type="button"
                 disabled={action.busy}
-                onClick={() =>
+                onClick={() => {
+                  const keeps = q.bookingId ? " The booking made from it stays." : "";
+                  if (q.status !== "draft" && !window.confirm(`Delete quote ${q.reference}? The customer's quote link stops working.${keeps} This can't be undone.`)) return;
                   void action.run(async () => {
                     await adminFetch(`/quotes/${id}`, { method: "DELETE" });
                     router.replace(q.leadId ? `/admin/leads/${q.leadId}` : "/admin/quotes");
-                  })
-                }
+                  });
+                }}
                 className="mt-4 inline-flex items-center gap-1.5 text-sm text-muted hover:text-brand"
               >
-                <Trash2 className="size-4" aria-hidden /> Delete draft
+                <Trash2 className="size-4" aria-hidden /> {q.status === "draft" ? "Delete draft" : "Delete quote"}
               </button>
             )}
           </Card>

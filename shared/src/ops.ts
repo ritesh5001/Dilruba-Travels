@@ -45,6 +45,7 @@ export const permissions = [
   "catalog.write", // packages, photos, departures, reviews
   "costs", // supplier costs, suppliers and supplier payments
   "reports", // reports, exports and campaigns
+  "delete", // delete records for good: bookings, customers, quotes, payments, notes… (owner and manager)
   "staff",
   "settings",
 ] as const;
@@ -541,6 +542,8 @@ export const settingsSchema = z.object({
   tcsRate: z.coerce.number().min(0).max(20),
   tcsCategories: z.array(z.enum(categorySlugs)),
   bankDetails: z.string().trim().max(600),
+  /** Printed on invoices, one per line; "LABEL: text" lines show the label in its own column. */
+  invoiceTerms: z.string().trim().max(2000),
   googleReviewUrl: z.union([z.url("Paste the full review link").trim().max(500), z.literal("")]),
   referralOffer: z.string().trim().max(200),
   /** Email customers before an instalment is due and when it's overdue. */
@@ -571,6 +574,14 @@ export const defaultSettings: Settings = {
     "Account No: 923020038443202",
     "IFSC Code: UTIB0002171 (Current Account)",
   ].join("\n"),
+  invoiceTerms: [
+    "IMP: All cases and disputes are subject to Mumbai jurisdiction.",
+    "DEPOSIT: The booking amount is non-refundable upon cancellation.",
+    "BALANCE: The full balance must be cleared at least 12 days before departure.",
+    "PASSPORT: Passports must be valid for at least 6 months from the date of travel.",
+    "AIRLINES: The agency is not liable for airline schedule changes or war conditions.",
+    "VERY IMP.: Kindly check all details carefully to avoid unnecessary complications.",
+  ].join("\n"),
   googleReviewUrl: "",
   referralOffer: "",
   instalmentReminders: true,
@@ -586,10 +597,12 @@ export type InvoiceData = {
   /** Null until "Issue invoice" gives it a number (numbers never change or get reused). */
   number: string | null;
   date: string | null;
-  seller: { legalName: string; address: string; gstin: string; bankDetails: string; phone: string; email: string };
+  seller: { legalName: string; address: string; gstin: string; bankDetails: string; terms: string; phone: string; email: string };
   buyer: { name: string; phone: string; email: string | null };
-  booking: { reference: string; packageTitle: string; travelMonth: string | null; departure: string | null; adults: number; children: number };
-  travellers: string[];
+  booking: { reference: string; packageTitle: string; travelMonth: string | null; departure: string | null; adults: number; children: number; roomType: RoomType | null };
+  travellers: { name: string; type: "Adult" | "Child" | "Infant"; passport: string | null; nationality: string; room: RoomType | null }[];
+  /** What the price is made of (incl. GST): the accepted quote's lines, or the package per person. */
+  items: { description: string; quantity: number; rate: number; amount: number }[];
   /** Package price including GST. */
   packagePrice: number;
   /** GST included in the package price; null when no GSTIN is set (then it's a plain receipt). */
@@ -600,6 +613,30 @@ export type InvoiceData = {
   balance: number;
   payments: { date: string; method: string; amount: number; reference: string | null }[];
 };
+
+/** Rupees in words, Indian style: 9550 → "Nine Thousand Five Hundred And Fifty Only". */
+export function rupeesInWords(paise: number) {
+  const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const under100 = (n: number) => (n < 20 ? ones[n]! : `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ""}`);
+  const under1000 = (n: number) => {
+    const h = Math.floor(n / 100);
+    const rest = n % 100;
+    return [h ? `${ones[h]} Hundred` : "", rest ? under100(rest) : ""].filter(Boolean).join(" And ");
+  };
+  const rupees = Math.floor(paise / 100);
+  const p = paise % 100;
+  if (rupees === 0 && p === 0) return "Zero Only";
+  const parts: string[] = [];
+  let n = rupees;
+  for (const [size, name] of [[1e7, "Crore"], [1e5, "Lakh"], [1e3, "Thousand"]] as const) {
+    const chunk = Math.floor(n / size);
+    if (chunk) parts.push(`${chunk >= 100 ? under1000(chunk) : under100(chunk)} ${name}`);
+    n %= size;
+  }
+  if (n) parts.push(parts.length && n < 100 ? `And ${under100(n)}` : under1000(n));
+  return `${parts.join(" ")}${p ? ` And ${under100(p)} Paise` : ""} Only`.trim();
+}
 
 /** Splits a GST-inclusive price into taxable value and tax (paise). */
 export function splitGst(inclusive: number, rate: number) {

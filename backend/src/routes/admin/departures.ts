@@ -2,6 +2,7 @@ import type { AdminDepartureDetail } from "@dilruba/shared/crm";
 import { departureInputSchema, todayIST, type AdminDeparture } from "@dilruba/shared/ops";
 import { Router } from "express";
 import { db } from "../../db/index.ts";
+import { userCan } from "../../lib/auth.ts";
 import { parseBody, parseId } from "../../lib/util.ts";
 import { refreshWebsite } from "../../services/catalog.ts";
 import { bookingsQuery, departuresQuery, documentsFor, toAdminBooking, toAdminDeparture, toAdminTraveller } from "./mappers.ts";
@@ -84,9 +85,14 @@ departuresRouter.put("/:id", async (req, res) => {
 departuresRouter.delete("/:id", async (req, res) => {
   const id = parseId(req.params.id);
   if (!id) return void res.status(404).json({ ok: false, error: "Departure not found" });
-  const used = await db.selectFrom("bookings").select("id").where("departure_id", "=", id).where("status", "!=", "cancelled").executeTakeFirst();
-  if (used) return void res.status(409).json({ ok: false, error: "Bookings are on this departure. Move or cancel them first, or close the departure instead." });
-  await db.deleteFrom("departures").where("id", "=", id).execute();
+  // Bookings on it are kept and simply lose the group date (the database clears it). Deleting a
+  // departure with bookings is for owners and managers.
+  const used = await db.selectFrom("bookings").select((eb) => eb.fn.countAll<number>().as("n")).where("departure_id", "=", id).executeTakeFirstOrThrow();
+  if (Number(used.n) > 0 && !userCan(res, "delete")) {
+    return void res.status(403).json({ ok: false, error: "Bookings are on this departure. Ask an owner or manager to delete it, or close the departure instead." });
+  }
+  const row = await db.deleteFrom("departures").where("id", "=", id).returning("id").executeTakeFirst();
+  if (!row) return void res.status(404).json({ ok: false, error: "Departure not found" });
   void refreshWebsite();
-  res.json({ ok: true });
+  res.json({ ok: true, bookings: Number(used.n) });
 });

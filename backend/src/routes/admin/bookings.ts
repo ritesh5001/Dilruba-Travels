@@ -1,6 +1,6 @@
 import { bookingStatuses, bookingStatusLabels, formatINR, formatTravelMonth, paymentMethodLabels, paymentMethods, type PaymentMethod } from "@dilruba/shared/booking";
 import type { AdminBooking, AdminBookingDetail, Paged } from "@dilruba/shared/crm";
-import { costInputSchema, financialYear, formatDay, instalmentPlanSchema, splitGst, supplierTypeForCost, todayIST, type InvoiceData } from "@dilruba/shared/ops";
+import { costInputSchema, defaultSettings, financialYear, formatDay, instalmentPlanSchema, roomTypeLabels, splitGst, supplierTypeForCost, todayIST, type InvoiceData } from "@dilruba/shared/ops";
 import { site } from "@dilruba/shared/site";
 import { Router, type Response } from "express";
 import { sql } from "kysely";
@@ -12,6 +12,8 @@ import { currentUser, requirePermission, userCan } from "../../lib/auth.ts";
 import { likePattern, PAGE_SIZE, pageParam, parseBody, parseId } from "../../lib/util.ts";
 import { paymentProvider } from "../../payments/index.ts";
 import { addEvent, balanceOf, dueNow, instalmentStates, payable, recordManualPayment, sendFeedbackRequest, sendStatusEmail } from "../../services/crm.ts";
+import { deleteBookings } from "../../services/deletes.ts";
+import { refreshWebsite } from "../../services/catalog.ts";
 import { getSettings, tcsFor } from "../../services/settings.ts";
 import { findOrCreateSupplier, supplierLedger } from "../../services/suppliers.ts";
 import { bookingsQuery, documentsFor, toAdminBooking, toAdminCost, toAdminNote, toAdminPayment, toAdminTraveller } from "./mappers.ts";
@@ -320,6 +322,46 @@ bookingsAdminRouter.post("/:id/payments", canTakePayments, async (req, res) => {
   await respondWithBooking(res, id);
 });
 
+/** Deletes the booking for good with its payments, travellers, documents and costs (owners and managers). */
+bookingsAdminRouter.delete("/:id", requirePermission("delete"), async (req, res) => {
+  const id = parseId(req.params.id);
+  if (!id) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const b = await db.selectFrom("bookings").select(["reference", "lead_id", "departure_id"]).where("id", "=", id).executeTakeFirst();
+  if (!b) return void res.status(404).json({ ok: false, error: "Booking not found" });
+  const me = currentUser(res);
+  await db.transaction().execute(async (trx) => {
+    await deleteBookings(trx, [id]);
+    if (b.lead_id) await addEvent(trx, { lead_id: b.lead_id, author: me.name, body: `Booking ${b.reference} deleted by ${me.name}.` });
+  });
+  console.info(`[bookings] ${me.name} deleted booking #${id} (${b.reference})`);
+  if (b.departure_id) void refreshWebsite();
+  res.json({ ok: true });
+});
+
+/** Removes a payment or refund entered by mistake; the booking's paid and refunded totals follow. */
+bookingsAdminRouter.delete("/:id/payments/:pid", requirePermission("delete"), async (req, res) => {
+  const id = parseId(req.params.id);
+  const pid = parseId(req.params.pid);
+  if (!id || !pid) return void res.status(404).json({ ok: false, error: "Payment not found" });
+  const me = currentUser(res);
+  const result = await db.transaction().execute(async (trx) => {
+    const b = await trx.selectFrom("bookings").selectAll().where("id", "=", id).forUpdate().executeTakeFirst();
+    const p = await trx.selectFrom("payments").selectAll().where("id", "=", pid).where("booking_id", "=", id).executeTakeFirst();
+    if (!b || !p) return { ok: false, status: 404, message: "Payment not found" } as const;
+    const counted = p.status === "paid" || p.status === "refunded";
+    const paid = p.status === "paid" ? b.amount_paid - p.amount : b.amount_paid;
+    const refunded = p.status === "refunded" ? b.refunded_amount - p.amount : b.refunded_amount;
+    if (refunded > paid) return { ok: false, status: 409, message: `${formatINR(b.refunded_amount)} was refunded on this booking. Delete the refund first.` } as const;
+    await trx.deleteFrom("payments").where("id", "=", pid).execute();
+    if (counted) await trx.updateTable("bookings").set({ amount_paid: paid, refunded_amount: refunded, updated_at: new Date() }).where("id", "=", id).execute();
+    const what = p.status === "refunded" ? "Refund" : "Payment";
+    await addEvent(trx, { booking_id: id, customer_id: b.customer_id, author: me.name, body: `${what} of ${formatINR(p.amount)} (${p.provider === "manual" ? (paymentMethodLabels[p.method as PaymentMethod] ?? p.method) : "online"}) deleted by ${me.name}.` });
+    return { ok: true } as const;
+  });
+  if (!result.ok) return void res.status(result.status).json({ ok: false, error: result.message });
+  await respondWithBooking(res, id);
+});
+
 /** Money given back after a cancellation. "Paid" stays what the customer paid; the refund is kept beside it. */
 bookingsAdminRouter.post("/:id/refunds", canTakePayments, async (req, res) => {
   const id = parseId(req.params.id);
@@ -479,16 +521,44 @@ bookingsAdminRouter.delete("/:id/costs/:cid", canManageCosts, async (req, res) =
 async function invoiceData(id: number): Promise<InvoiceData | null> {
   const b = await bookingsQuery().where("bookings.id", "=", id).executeTakeFirst();
   if (!b || b.total_amount === null) return null;
-  const [settings, travellers, payments] = await Promise.all([
+  const [settings, travellers, payments, quote] = await Promise.all([
     getSettings(),
-    db.selectFrom("travellers").select("full_name").where("booking_id", "=", id).orderBy("id").execute(),
+    db.selectFrom("travellers").select(["full_name", "date_of_birth", "passport_number", "nationality", "room_type"]).where("booking_id", "=", id).orderBy("id").execute(),
     db.selectFrom("payments").selectAll().where("booking_id", "=", id).where("status", "=", "paid").orderBy("paid_at").execute(),
+    db.selectFrom("quotes").select(["items", "discount"]).where("booking_id", "=", id).executeTakeFirst(),
   ]);
+  // Age on the travel date (or today): under 2 is an infant, under 12 a child.
+  const onDate = b.departure_start ?? todayIST();
+  const paxType = (dob: string | null) => {
+    if (!dob) return "Adult" as const;
+    const age = Number(onDate.slice(0, 4)) - Number(dob.slice(0, 4)) - (onDate.slice(5) < dob.slice(5) ? 1 : 0);
+    return age < 2 ? ("Infant" as const) : age < 12 ? ("Child" as const) : ("Adult" as const);
+  };
+  // The quote's lines when the booking still has the quoted price; otherwise the package per person.
+  const pax = b.adults + b.children;
+  const quoted = quote && quote.items.reduce((sum, i) => sum + i.quantity * i.unitPrice, 0) - quote.discount === b.total_amount;
+  const roomName = b.room_type ? ` – ${roomTypeLabels[b.room_type]}` : "";
+  const items: InvoiceData["items"] = quoted
+    ? [
+        ...quote.items.map((i) => ({ description: i.label, quantity: i.quantity, rate: i.unitPrice, amount: i.quantity * i.unitPrice })),
+        ...(quote.discount > 0 ? [{ description: "Discount", quantity: 1, rate: -quote.discount, amount: -quote.discount }] : []),
+      ]
+    : b.total_amount % pax === 0
+      ? [{ description: `${b.package_title}${roomName}, per person`, quantity: pax, rate: b.total_amount / pax, amount: b.total_amount }]
+      : [{ description: `${b.package_title}${roomName} (${pax} travellers)`, quantity: 1, rate: b.total_amount, amount: b.total_amount }];
   const gst = settings.gstin && settings.gstRate > 0 ? { rate: settings.gstRate, ...splitGst(b.total_amount, settings.gstRate) } : null;
   return {
     number: b.invoice_number,
     date: b.invoice_date,
-    seller: { legalName: settings.legalName, address: settings.address, gstin: settings.gstin, bankDetails: settings.bankDetails, phone: site.phone, email: site.email },
+    seller: {
+      legalName: settings.legalName,
+      address: settings.address,
+      gstin: settings.gstin,
+      bankDetails: settings.bankDetails || defaultSettings.bankDetails,
+      terms: settings.invoiceTerms,
+      phone: site.phone,
+      email: site.email,
+    },
     buyer: { name: b.customer_name, phone: b.customer_phone, email: b.customer_email },
     booking: {
       reference: b.reference,
@@ -497,8 +567,10 @@ async function invoiceData(id: number): Promise<InvoiceData | null> {
       departure: b.departure_title && b.departure_start ? `${b.departure_title} (${formatDay(b.departure_start)})` : null,
       adults: b.adults,
       children: b.children,
+      roomType: b.room_type,
     },
-    travellers: travellers.map((t) => t.full_name),
+    travellers: travellers.map((t) => ({ name: t.full_name, type: paxType(t.date_of_birth), passport: t.passport_number, nationality: t.nationality, room: t.room_type })),
+    items,
     packagePrice: b.total_amount,
     gst,
     tcs: b.tcs_amount > 0 ? { rate: settings.tcsRate, amount: b.tcs_amount } : null,

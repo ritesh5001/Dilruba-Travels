@@ -9,16 +9,17 @@ import type { AdminCustomerDetail } from "@dilruba/shared/crm";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { WhatsAppIcon } from "@/components/icons";
 import { BookingBadge, Card, Empty, ErrorBox, LeadBadge, Loading, NotesPanel, PageHeader, customerWhatsapp, formatDate } from "@/components/admin/ui";
-import { useCan } from "@/components/admin/shell";
+import { useCan, useCanDeleteNote } from "@/components/admin/shell";
 
 export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: c, setData, error, reload } = useAdminData<AdminCustomerDetail>(`/customers/${id}`);
   const action = useAction();
   const can = useCan();
+  const canDeleteNote = useCanDeleteNote();
   const canWrite = can("customers.write");
-  // Owners and managers; customers with bookings are refused by the server (history is kept).
-  const canDelete = canWrite && can("leads.all");
+  // Owners and managers; their bookings are deleted with them.
+  const canDelete = can("delete");
   const router = useRouter();
   const [saved, setSaved] = useState(false);
 
@@ -54,12 +55,7 @@ export default function CustomerDetailPage() {
                 type="button"
                 disabled={action.busy}
                 onClick={() => {
-                  // Bookings carry payment history, so those customers are kept (the server checks too).
-                  if (c.bookings.length > 0) {
-                    action.setError(`${c.name} has ${c.bookings.length} booking${c.bookings.length === 1 ? "" : "s"}, so they can't be deleted (their payment history must be kept). Cancel the bookings instead.`);
-                    return;
-                  }
-                  if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes and notes? This can't be undone.`)) return;
+                  if (!window.confirm(`Delete ${c.name} with all their enquiries, quotes, notes${c.bookings.length > 0 ? ` and their ${c.bookings.length} booking${c.bookings.length === 1 ? "" : "s"} (payments, travellers and documents)` : ""}? This can't be undone.`)) return;
                   void action.run(async () => {
                     await adminFetch(`/customers/${id}`, { method: "DELETE" });
                     router.replace("/admin/customers");
@@ -115,7 +111,7 @@ export default function CustomerDetailPage() {
               </ul>
             )}
           </Card>
-          <NotesPanel readOnly={!canWrite} notes={c.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
+          <NotesPanel canDelete={canDeleteNote} onDeleted={reload} readOnly={!canWrite} notes={c.notes} onAdd={(body) => mutate("/notes", "POST", { body })} />
         </div>
 
         <div className="space-y-6">
