@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarDays, Check, CheckCircle2, CircleAlert, Loader2, Phone, Users } from "lucide-react";
+import { BedDouble, CalendarDays, Check, CheckCircle2, CircleAlert, Loader2, Phone, Users } from "lucide-react";
 import { formatINR, formatTravelMonth } from "@dilruba/shared/booking";
-import { formatDay, type PublicQuote } from "@dilruba/shared/ops";
+import { formatDay, hotelCityLabels, type PublicQuote } from "@dilruba/shared/ops";
 import { site, whatsappLink } from "@/lib/site";
 import { WhatsAppIcon } from "./icons";
 
@@ -111,7 +111,23 @@ export function QuoteView() {
             <tr className="border-t-2 border-ink text-base font-semibold"><td className="py-3">Total</td><td className="py-3 text-right">{formatINR(quote.total)}</td></tr>
           </tfoot>
         </table>
-        <p className="text-xs text-muted">Including GST. For overseas trips, TCS as per income-tax rules is added on the booking and can be claimed back in your tax return.</p>
+        {(quote.gstRate !== null || quote.tcsRate !== null) && (
+          <p className="text-xs text-muted">
+            {[quote.gstRate !== null && `Prices include GST @ ${quote.gstRate}%.`, quote.tcsRate !== null && `TCS @ ${quote.tcsRate}% is added on the booking and can be claimed back in your income-tax return.`].filter(Boolean).join(" ")}
+          </p>
+        )}
+
+        {quote.hotels.length > 0 && (
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            {quote.hotels.map((h) => (
+              <div key={h.city} className="rounded-2xl border-l-4 border-brand bg-sand p-4">
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-brand"><BedDouble className="size-4" aria-hidden /> {hotelCityLabels[h.city]} hotel</p>
+                <p className="mt-1 font-semibold">{h.name}</p>
+                {h.detail && <p className="text-sm text-muted">{h.detail}</p>}
+              </div>
+            ))}
+          </div>
+        )}
 
         {quote.inclusions.length > 0 && (
           <div className="mt-8">
@@ -121,6 +137,22 @@ export function QuoteView() {
                 <li key={i} className="flex gap-2 text-sm"><Check className="mt-0.5 size-4 shrink-0 text-[#1a9b4b]" aria-hidden /> {i}</li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {quote.itinerary.length > 0 && (
+          <div className="mt-8">
+            <h3 className="font-semibold">Day-by-day itinerary</h3>
+            <ol className="mt-3 space-y-3 border-l-2 border-line pl-4">
+              {quote.itinerary.map((d, n) => (
+                <li key={n} className="relative">
+                  <span className="absolute -left-[1.4rem] top-1.5 size-2.5 rounded-full bg-brand" aria-hidden />
+                  <p className="text-xs font-semibold uppercase tracking-wide text-brand">{d.day}</p>
+                  <p className="font-medium">{d.title}</p>
+                  {d.description && <p className="text-sm text-muted">{d.description}</p>}
+                </li>
+              ))}
+            </ol>
           </div>
         )}
       </section>

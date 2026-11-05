@@ -14,7 +14,7 @@ import { paymentProvider } from "../../payments/index.ts";
 import { addEvent, balanceOf, dueNow, instalmentStates, payable, recordManualPayment, sendFeedbackRequest, sendStatusEmail } from "../../services/crm.ts";
 import { deleteBookings } from "../../services/deletes.ts";
 import { refreshWebsite } from "../../services/catalog.ts";
-import { getSettings, tcsFor } from "../../services/settings.ts";
+import { getSettings, tcsAmount } from "../../services/settings.ts";
 import { findOrCreateSupplier, supplierLedger } from "../../services/suppliers.ts";
 import { bookingsQuery, documentsFor, toAdminBooking, toAdminCost, toAdminNote, toAdminPayment, toAdminTraveller } from "./mappers.ts";
 import { travellersRouter } from "./travellers.ts";
@@ -105,7 +105,7 @@ async function loadBooking(id: number, showCosts: boolean): Promise<AdminBooking
     instalments: instalmentStates(instalments, row.amount_paid),
     costs: costs?.map((c) => toAdminCost(c, ledger.costs.get(c.id))) ?? null,
     invoiceNumber: row.invoice_number,
-    suggestedTcs: tcsFor(settings, row.package_category, row.total_amount),
+    suggestedTcs: tcsAmount(settings, row.total_amount),
     feedback: feedback
       ? { rating: feedback.rating, comment: feedback.comment, canPublish: feedback.can_publish, reviewId: feedback.review_id, createdAt: feedback.created_at.toISOString() }
       : null,
@@ -134,6 +134,8 @@ const updateSchema = z
     totalAmount: rupees.nullable().optional(),
     depositAmount: rupees.nullable().optional(),
     tcsAmount: rupees.optional(),
+    gstEnabled: z.boolean().optional(),
+    tcsEnabled: z.boolean().optional(),
     customerNotes: z.string().trim().max(1000).nullable().optional(),
     mobile: z.string().trim().regex(/^[+\d][\d\s-]{7,16}$/).nullable().optional(),
     passportNumber: z.string().trim().min(5).max(30).regex(/^[a-zA-Z0-9 -]+$/).nullable().optional(),
@@ -183,8 +185,15 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
   // The price form also sends the trip details, so check what actually changes: prices need
   // the payments permission, everything else the bookings permission.
   const changed = <T,>(next: T | undefined, current: T) => next !== undefined && next !== current;
+  // TCS only applies while ticked; unticking it clears the amount.
+  const tcsEnabled = data.tcsEnabled ?? before.tcs_enabled;
+  const tcs = !tcsEnabled ? 0 : data.tcsAmount === undefined ? before.tcs_amount : toPaise(data.tcsAmount)!;
   const priceChanged =
-    changed(toPaise(data.totalAmount), before.total_amount) || changed(toPaise(data.depositAmount), before.deposit_amount) || changed(toPaise(data.tcsAmount), before.tcs_amount);
+    changed(toPaise(data.totalAmount), before.total_amount) ||
+    changed(toPaise(data.depositAmount), before.deposit_amount) ||
+    tcs !== before.tcs_amount ||
+    changed(data.gstEnabled, before.gst_enabled) ||
+    changed(data.tcsEnabled, before.tcs_enabled);
   const tripChanged =
     changed(data.customerNotes, before.customer_notes) ||
     changed(data.mobile, before.mobile) ||
@@ -228,7 +237,9 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
         status: data.status,
         total_amount: total,
         deposit_amount: deposit,
-        tcs_amount: data.tcsAmount === undefined ? undefined : toPaise(data.tcsAmount)!,
+        tcs_amount: tcs,
+        tcs_enabled: tcsEnabled,
+        gst_enabled: data.gstEnabled,
         package_title: data.packageTitle,
         package_category: data.packageCategory,
         package_slug: data.packageSlug,
@@ -251,6 +262,8 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
     if (b.total_amount !== before.total_amount) changes.push(`total ${formatINR(before.total_amount)} → ${formatINR(b.total_amount)}`);
     if (b.deposit_amount !== before.deposit_amount) changes.push(`deposit ${formatINR(before.deposit_amount)} → ${formatINR(b.deposit_amount)}`);
     if (b.tcs_amount !== before.tcs_amount) changes.push(`TCS ${formatINR(before.tcs_amount)} → ${formatINR(b.tcs_amount)}`);
+    if (b.gst_enabled !== before.gst_enabled) changes.push(b.gst_enabled ? "GST shown on the invoice" : "GST removed from the invoice");
+    if (b.tcs_enabled !== before.tcs_enabled && !b.tcs_enabled) changes.push("TCS removed");
     if (b.customer_notes !== before.customer_notes) changes.push("customer notes updated");
     if (b.mobile !== before.mobile || b.passport_number !== before.passport_number) changes.push("contact / passport details updated");
     if (b.room_type !== before.room_type) changes.push(`room sharing → ${b.room_type ?? "unspecified"}`);
@@ -546,7 +559,8 @@ async function invoiceData(id: number): Promise<InvoiceData | null> {
     : b.total_amount % pax === 0
       ? [{ description: `${b.package_title}${roomName}, per person`, quantity: pax, rate: b.total_amount / pax, amount: b.total_amount }]
       : [{ description: `${b.package_title}${roomName} (${pax} travellers)`, quantity: 1, rate: b.total_amount, amount: b.total_amount }];
-  const gst = settings.gstin && settings.gstRate > 0 ? { rate: settings.gstRate, ...splitGst(b.total_amount, settings.gstRate) } : null;
+  // Only when ticked on the booking: otherwise the invoice shows no GST at all.
+  const gst = b.gst_enabled && settings.gstRate > 0 ? { rate: settings.gstRate, ...splitGst(b.total_amount, settings.gstRate) } : null;
   return {
     number: b.invoice_number,
     date: b.invoice_date,
@@ -573,7 +587,7 @@ async function invoiceData(id: number): Promise<InvoiceData | null> {
     items,
     packagePrice: b.total_amount,
     gst,
-    tcs: b.tcs_amount > 0 ? { rate: settings.tcsRate, amount: b.tcs_amount } : null,
+    tcs: b.tcs_enabled && b.tcs_amount > 0 ? { rate: settings.tcsRate, amount: b.tcs_amount } : null,
     total: payable(b)!,
     paid: b.amount_paid,
     balance: balanceOf(b)!,

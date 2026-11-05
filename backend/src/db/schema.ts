@@ -1,5 +1,5 @@
 import type { BookingStatus, LeadStatus } from "@dilruba/shared/booking";
-import type { CostCategory, DepartureStatus, DocumentKind, QuoteItem, QuoteStatus, RoomType, StaffRole, SupplierType, VisaStatus } from "@dilruba/shared/ops";
+import type { CostCategory, DepartureStatus, DocumentKind, HotelCity, ItineraryDay, QuoteHotel, QuoteItem, QuoteStatus, RoomType, StaffRole, SupplierType, VisaStatus } from "@dilruba/shared/ops";
 import type { ColumnType, Generated, Insertable, Selectable } from "kysely";
 
 type CreatedAt = ColumnType<Date, Date | string | undefined, never>;
@@ -64,6 +64,10 @@ export interface BookingTable {
   amount_paid: ColumnType<number, number | undefined, number>;
   /** Money given back after a cancellation (paise); amount_paid stays what the customer paid. */
   refunded_amount: ColumnType<number, number | undefined, number>;
+  /** Show the GST split on the invoice. */
+  gst_enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  /** Charge TCS on top (tcs_amount is 0 when off). */
+  tcs_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   /** Tax collected at source on overseas packages, charged on top of total_amount (paise). */
   tcs_amount: ColumnType<number, number | undefined, number>;
   departure_id: number | null;
@@ -255,6 +259,10 @@ export interface QuoteTable {
   discount: ColumnType<number, number | undefined, number>;
   deposit: number | null;
   inclusions: Json<string[]>;
+  itinerary: ColumnType<ItineraryDay[], string | undefined, string>;
+  hotels: ColumnType<QuoteHotel[], string | undefined, string>;
+  gst_enabled: ColumnType<boolean, boolean | undefined, boolean>;
+  tcs_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   message: string | null;
   valid_until: DateColumn | null;
   status: ColumnType<QuoteStatus, QuoteStatus | undefined, QuoteStatus>;
@@ -317,6 +325,15 @@ export interface SupplierPaymentTable {
   created_at: CreatedAt;
 }
 
+export interface HotelTable {
+  id: Generated<number>;
+  city: HotelCity;
+  name: string;
+  /** Distance and notes, e.g. "650 m · easy walking distance". */
+  detail: string | null;
+  created_at: CreatedAt;
+}
+
 export interface NotificationTable {
   id: Generated<number>;
   /** A staff user's id, or 0 for the main owner login. */
@@ -348,6 +365,7 @@ export interface Database {
   suppliers: SupplierTable;
   supplier_payments: SupplierPaymentTable;
   notifications: NotificationTable;
+  hotels: HotelTable;
   settings: SettingTable;
   customers: CustomerTable;
   leads: LeadTable;

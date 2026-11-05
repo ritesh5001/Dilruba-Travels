@@ -1,12 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { formatINR } from "@dilruba/shared/booking";
 import type { AdminPackage } from "@dilruba/shared/catalog";
 import type { AdminCustomer, AdminLeadDetail, Paged } from "@dilruba/shared/crm";
-import { formatDay, roomTypeLabels, roomTypes, todayIST, type AdminDeparture, type AdminQuote, type QuoteInput, type RoomType } from "@dilruba/shared/ops";
+import { formatDay, hotelCities, hotelCityLabels, roomTypeLabels, roomTypes, todayIST, type AdminDeparture, type AdminHotel, type AdminQuote, type HotelCity, type ItineraryDay, type QuoteHotel, type QuoteInput, type RoomType } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { Card, ErrorBox } from "./ui";
 
@@ -42,6 +43,12 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
   const [validUntil, setValidUntil] = useState(quote?.validUntil ?? addDays(7));
   const [inclusions, setInclusions] = useState((quote?.inclusions ?? []).join("\n"));
   const [message, setMessage] = useState(quote?.message ?? "");
+  const [gstEnabled, setGstEnabled] = useState(quote?.gstEnabled ?? false);
+  const [tcsEnabled, setTcsEnabled] = useState(quote?.tcsEnabled ?? false);
+  const [itinerary, setItinerary] = useState<ItineraryDay[]>(quote?.itinerary ?? []);
+  const [itineraryFrom, setItineraryFrom] = useState<number | "">(quote?.packageId ?? "");
+  const [hotels, setHotels] = useState<Partial<Record<HotelCity, QuoteHotel>>>(() => Object.fromEntries((quote?.hotels ?? []).map((h) => [h.city, h])));
+  const { data: hotelList } = useAdminData<AdminHotel[]>("/hotels");
 
   const pkg = packages?.find((x) => x.id === packageId);
   const pricedRooms = roomTypes.filter((room) => pkg?.roomPrices?.[room] != null);
@@ -68,6 +75,8 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
     if (!p) return setRoomType("");
     setTitle(p.title);
     setInclusions(p.inclusions.join("\n"));
+    setItineraryFrom(p.id);
+    if (itinerary.length === 0) setItinerary(p.itinerary.map((d) => ({ ...d })));
     const room = roomTypes.find((r) => p.roomPrices?.[r] != null) ?? "";
     setRoomType(room);
     // Only fill the price line if staff haven't started pricing yet.
@@ -97,6 +106,10 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
       discount: Number(discount) || 0,
       deposit: deposit === "" ? null : Number(deposit),
       inclusions: inclusions.split("\n").map((s) => s.trim()).filter(Boolean),
+      itinerary: itinerary.filter((d) => d.day.trim() || d.title.trim() || d.description.trim()),
+      hotels: hotelCities.flatMap((c) => (hotels[c] ? [hotels[c]!] : [])),
+      gstEnabled,
+      tcsEnabled,
       message: message.trim(),
       validUntil,
     };
@@ -212,7 +225,53 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
           </div>
         </div>
         <p className="mt-4 text-right text-lg">Total <strong className="font-display text-2xl">{formatINR(total * 100)}</strong></p>
-        <p className="text-right text-xs text-muted">Including GST. TCS on overseas packages is added on the booking.</p>
+        <div className="mt-4 flex flex-wrap justify-end gap-x-6 gap-y-2 border-t border-line pt-4 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={gstEnabled} onChange={(e) => setGstEnabled(e.target.checked)} className="size-4 accent-[var(--color-brand)]" /> Prices include GST
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={tcsEnabled} onChange={(e) => setTcsEnabled(e.target.checked)} className="size-4 accent-[var(--color-brand)]" /> Add TCS on the booking
+          </label>
+        </div>
+        <p className="mt-1 text-right text-xs text-muted">
+          {gstEnabled || tcsEnabled
+            ? [gstEnabled && "The quote says prices include GST", tcsEnabled && "TCS (rate in Settings) is added when it becomes a booking"].filter(Boolean).join(". ") + "."
+            : "Unticked: the quote and booking say nothing about GST or TCS."}
+        </p>
+      </Card>
+
+      <Card title="Hotels">
+        <div className="grid gap-4 sm:grid-cols-2">
+          {hotelCities.map((city) => {
+            const options = hotelList?.filter((h) => h.city === city) ?? [];
+            const chosen = hotels[city];
+            const match = chosen && options.find((h) => h.name === chosen.name);
+            return (
+              <div key={city}>
+                <label htmlFor={`q-hotel-${city}`} className="label">{hotelCityLabels[city]} hotel</label>
+                <select
+                  id={`q-hotel-${city}`}
+                  value={match ? String(match.id) : chosen ? "kept" : ""}
+                  onChange={(e) => {
+                    const h = options.find((o) => String(o.id) === e.target.value);
+                    if (e.target.value === "kept") return;
+                    setHotels((hs) => ({ ...hs, [city]: h ? { city, name: h.name, detail: h.detail } : undefined }));
+                  }}
+                  className="field appearance-none"
+                >
+                  <option value="">No hotel shown</option>
+                  {chosen && !match && <option value="kept">{chosen.name} (as on this quote)</option>}
+                  {options.map((h) => (
+                    <option key={h.id} value={h.id}>{h.name}{h.detail ? ` · ${h.detail}` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Shown on the quote and its PDF. Add or remove hotels on the <Link href="/admin/hotels" className="text-brand hover:underline">Hotels</Link> page.
+        </p>
       </Card>
 
       <Card title="What the customer sees">
@@ -221,6 +280,7 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
             <label htmlFor="q-inclusions" className="label">Included (one per line)</label>
             <textarea id="q-inclusions" rows={6} value={inclusions} onChange={(e) => setInclusions(e.target.value)} placeholder={"Return flights from Mumbai\nUmrah visa\nHotel 300m from Haram"} className="field" />
           </div>
+          <ItineraryEditor days={itinerary} onChange={setItinerary} packages={packages ?? []} from={itineraryFrom} onFrom={setItineraryFrom} />
           <div>
             <label htmlFor="q-message" className="label">Personal message <span className="font-normal text-muted">(optional)</span></label>
             <textarea id="q-message" rows={3} value={message} onChange={(e) => setMessage(e.target.value)} maxLength={2000} placeholder="Hotel names, flight timings, anything special about this offer…" className="field" />
@@ -232,6 +292,75 @@ export function QuoteEditor({ quote, lead, onSaved }: { quote?: AdminQuote; lead
         {action.busy && <Loader2 className="size-4 animate-spin" aria-hidden />} {quote ? "Save changes" : "Save draft"}
       </button>
     </form>
+  );
+}
+
+/** Day-by-day plan: copied from a website package, then edited freely, or written from scratch. */
+function ItineraryEditor({
+  days,
+  onChange,
+  packages,
+  from,
+  onFrom,
+}: {
+  days: ItineraryDay[];
+  onChange: (days: ItineraryDay[]) => void;
+  packages: AdminPackage[];
+  from: number | "";
+  onFrom: (id: number | "") => void;
+}) {
+  const set = (i: number, patch: Partial<ItineraryDay>) => onChange(days.map((d, j) => (j === i ? { ...d, ...patch } : d)));
+  const source = packages.find((p) => p.id === from);
+  return (
+    <div>
+      <p className="label">Itinerary</p>
+      <div className="flex flex-col gap-2 rounded-xl bg-sand p-3 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <label htmlFor="q-itin-from" className="text-xs text-muted">Use the itinerary of a website package</label>
+          <select id="q-itin-from" value={from} onChange={(e) => onFrom(e.target.value ? Number(e.target.value) : "")} className="field mt-1 appearance-none bg-white">
+            <option value="">Choose a package…</option>
+            {packages.filter((p) => p.itinerary.length > 0).map((p) => (
+              <option key={p.id} value={p.id}>{p.title} ({p.itinerary.length} days)</option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          disabled={!source}
+          onClick={() => {
+            if (!source) return;
+            if (days.length && !window.confirm(`Replace the itinerary below with ${source.title}'s?`)) return;
+            onChange(source.itinerary.map((d) => ({ ...d })));
+          }}
+          className="btn btn-outline shrink-0 bg-white !py-2 disabled:opacity-50"
+        >
+          Load itinerary
+        </button>
+      </div>
+      {days.length === 0 ? (
+        <p className="mt-3 text-sm text-muted">No itinerary yet. Load one from a package above, or write your own.</p>
+      ) : (
+        <ol className="mt-3 space-y-3">
+          {days.map((d, i) => (
+            <li key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-[130px_1fr_auto]">
+              <input aria-label="Day" value={d.day} onChange={(e) => set(i, { day: e.target.value })} placeholder="Day 1" maxLength={30} className="field" />
+              <input aria-label="Title" value={d.title} onChange={(e) => set(i, { title: e.target.value })} placeholder="Arrival Jeddah & hotel transfer" maxLength={120} className="field" />
+              <button type="button" onClick={() => onChange(days.filter((_, j) => j !== i))} aria-label={`Remove ${d.day || "day"}`} className="justify-self-end rounded-md p-2 text-muted hover:text-brand">
+                <Trash2 className="size-4" aria-hidden />
+              </button>
+              <textarea aria-label="What happens" value={d.description} onChange={(e) => set(i, { description: e.target.value })} rows={2} maxLength={1000} placeholder="What happens that day" className="field resize-none sm:col-span-3" />
+            </li>
+          ))}
+        </ol>
+      )}
+      <button
+        type="button"
+        onClick={() => onChange([...days, { day: `Day ${days.length + 1}`, title: "", description: "" }])}
+        className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-brand"
+      >
+        <Plus className="size-4" aria-hidden /> Add a day
+      </button>
+    </div>
   );
 }
 

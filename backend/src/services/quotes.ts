@@ -7,7 +7,7 @@ import { leadOwner, notify } from "./notifications.ts";
 import { adminQuoteResponseEmail, bookingLink } from "../email/templates.ts";
 import { accessToken, bookingReference } from "../lib/util.ts";
 import { addEvent } from "./crm.ts";
-import { getSettings, tcsFor } from "./settings.ts";
+import { getSettings, tcsAmount } from "./settings.ts";
 
 /** A sent quote past its "valid until" date reads as expired. */
 export function effectiveStatus(q: Pick<Quote, "status" | "valid_until">): QuoteStatus {
@@ -15,9 +15,10 @@ export function effectiveStatus(q: Pick<Quote, "status" | "valid_until">): Quote
 }
 
 export async function toPublicQuote(q: Quote, c: Customer): Promise<PublicQuote> {
-  const [departure, booking] = await Promise.all([
+  const [departure, booking, settings] = await Promise.all([
     q.departure_id ? db.selectFrom("departures").select(["title", "start_date", "end_date"]).where("id", "=", q.departure_id).executeTakeFirst() : undefined,
     q.booking_id ? db.selectFrom("bookings").select(["reference", "access_token"]).where("id", "=", q.booking_id).executeTakeFirst() : undefined,
+    getSettings(),
   ]);
   return {
     reference: q.reference,
@@ -35,6 +36,10 @@ export async function toPublicQuote(q: Quote, c: Customer): Promise<PublicQuote>
     total: quoteTotal({ items: q.items, discount: q.discount }),
     deposit: q.deposit,
     inclusions: q.inclusions,
+    itinerary: q.itinerary,
+    hotels: q.hotels,
+    gstRate: q.gst_enabled ? settings.gstRate : null,
+    tcsRate: q.tcs_enabled ? settings.tcsRate : null,
     message: q.message,
     validUntil: q.valid_until,
     bookingLink: booking ? bookingLink(booking) : null,
@@ -68,7 +73,10 @@ export async function acceptQuote(quoteId: number, by: { staff?: string }) {
         children: q.children,
         total_amount: total,
         deposit_amount: q.deposit,
-        tcs_amount: tcsFor(settings, pkg?.category ?? null, total),
+        // GST and TCS carry over as ticked on the quote.
+        gst_enabled: q.gst_enabled,
+        tcs_enabled: q.tcs_enabled,
+        tcs_amount: q.tcs_enabled ? tcsAmount(settings, total) : 0,
         departure_id: q.departure_id,
         status: "awaiting_payment",
       })

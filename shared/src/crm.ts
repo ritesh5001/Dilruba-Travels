@@ -62,6 +62,8 @@ export type AdminBooking = {
   /** Given back after a cancellation; amountPaid still shows what the customer paid. */
   refundedAmount: number;
   tcsAmount: number;
+  gstEnabled: boolean;
+  tcsEnabled: boolean;
   departure: { id: number; title: string; startDate: string } | null;
   createdAt: string;
   customer: CustomerRef;

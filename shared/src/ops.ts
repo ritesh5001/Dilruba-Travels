@@ -437,6 +437,10 @@ export type AdminQuote = {
   deposit: number | null;
   total: number;
   inclusions: string[];
+  itinerary: ItineraryDay[];
+  hotels: QuoteHotel[];
+  gstEnabled: boolean;
+  tcsEnabled: boolean;
   message: string | null;
   validUntil: string | null;
   sentAt: string | null;
@@ -450,6 +454,24 @@ export type AdminQuote = {
 };
 
 /** Admin form: prices in rupees. */
+// ---------------- Hotels ----------------
+
+export const hotelCities = ["makkah", "madinah"] as const;
+export type HotelCity = (typeof hotelCities)[number];
+export const hotelCityLabels: Record<HotelCity, string> = { makkah: "Makkah", madinah: "Madinah" };
+
+export type AdminHotel = { id: number; city: HotelCity; name: string; detail: string | null };
+
+export const hotelInputSchema = z.object({
+  city: z.enum(hotelCities),
+  name: z.string().trim().min(2, "Enter the hotel name").max(120),
+  detail: optionalText(200),
+});
+
+/** A hotel as written on a quote (copied, so later edits don't change sent quotes). */
+export type QuoteHotel = { city: HotelCity; name: string; detail: string | null };
+export type ItineraryDay = { day: string; title: string; description: string };
+
 export const quoteInputSchema = z.object({
   leadId: z.coerce.number().int().positive().nullable().optional(),
   customerId: z.coerce.number().int().positive(),
@@ -469,6 +491,15 @@ export const quoteInputSchema = z.object({
   discount: rupees.default(0),
   deposit: rupees.nullable().optional(),
   inclusions: z.array(z.string().trim().min(1).max(200)).max(40).default([]),
+  itinerary: z
+    .array(z.object({ day: z.string().trim().min(1, "Give each itinerary day a label").max(30), title: z.string().trim().min(1, "Give each itinerary day a title").max(120), description: z.string().trim().max(1000).default("") }))
+    .max(60)
+    .default([]),
+  hotels: z.array(z.object({ city: z.enum(hotelCities), name: z.string().trim().min(1).max(120), detail: z.string().trim().max(200).nullable().default(null) })).max(4).default([]),
+  /** Prices include GST (shown on the quote and the booking's invoice). */
+  gstEnabled: z.boolean().default(false),
+  /** TCS is added on the booking. */
+  tcsEnabled: z.boolean().default(false),
   message: optionalText(2000),
   validUntil: optionalDate,
 });
@@ -491,6 +522,12 @@ export type PublicQuote = {
   total: number;
   deposit: number | null;
   inclusions: string[];
+  itinerary: ItineraryDay[];
+  hotels: QuoteHotel[];
+  /** GST rate (%) when the quote says prices include GST. */
+  gstRate: number | null;
+  /** TCS rate (%) when TCS is added on the booking. */
+  tcsRate: number | null;
   message: string | null;
   validUntil: string | null;
   /** After acceptance: the booking page where they pay. */

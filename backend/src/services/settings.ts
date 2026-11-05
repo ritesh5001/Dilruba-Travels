@@ -43,6 +43,12 @@ export async function setInternal(key: string, value: unknown) {
 }
 
 /** TCS for a package price, if its category is overseas (paise, rounded to the rupee). */
+/** TCS at the Settings rate on a total (paise), rounded to the rupee; used when TCS is ticked. */
+export function tcsAmount(settings: Settings, total: number | null) {
+  return total ? Math.round((total * settings.tcsRate) / 100 / 100) * 100 : 0;
+}
+
+/** The TCS suggested for a package category (overseas ones in Settings), or 0. */
 export function tcsFor(settings: Settings, category: string | null, total: number | null) {
   if (!total || !category || !(settings.tcsCategories as string[]).includes(category)) return 0;
   return Math.round((total * settings.tcsRate) / 100 / 100) * 100;

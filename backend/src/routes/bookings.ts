@@ -1,4 +1,3 @@
-import { getSettings, tcsFor } from "../services/settings.ts";
 import { bookingRequestSchema, payRequestSchema } from "@dilruba/shared/booking";
 import { Router } from "express";
 import { db } from "../db/index.ts";
@@ -31,7 +30,6 @@ bookingsRouter.post(
     if (!pkg) return void res.status(404).json({ ok: false, error: "Package is no longer available" });
     const unitPrice = data.roomType ? pkg.room_prices[data.roomType] : null;
     const total = unitPrice == null ? null : Math.round(unitPrice * (data.adults + data.children) * 100);
-    const settings = await getSettings();
     // The customer picked a fixed date: it must be an open, upcoming departure of this package
     // with enough seats, or they're told to pick another.
     let departure: { id: number; title: string; start_date: string } | undefined;
@@ -91,7 +89,8 @@ bookingsRouter.post(
             passport_number: data.passportNumber?.toUpperCase() ?? null,
             room_type: data.roomType ?? null,
             total_amount: total,
-            tcs_amount: tcsFor(settings, pkg.category, total),
+            // TCS is added by staff (tick "Add TCS" on the booking), never automatically.
+            tcs_amount: 0,
             departure_id: departure?.id ?? null,
           })
           .returningAll()

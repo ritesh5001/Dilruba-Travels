@@ -99,6 +99,10 @@ function columns(d: z.output<typeof quoteInputSchema>) {
     discount: Math.round(d.discount * 100),
     deposit: d.deposit == null ? null : Math.round(d.deposit * 100),
     inclusions: JSON.stringify(d.inclusions),
+    itinerary: JSON.stringify(d.itinerary),
+    hotels: JSON.stringify(d.hotels),
+    gst_enabled: d.gstEnabled,
+    tcs_enabled: d.tcsEnabled,
     message: d.message,
     valid_until: d.validUntil,
   };

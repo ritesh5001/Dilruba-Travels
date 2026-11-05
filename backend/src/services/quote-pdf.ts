@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import { fileURLToPath } from "node:url";
 import type { Response } from "express";
-import { defaultSettings, formatDay, type PublicQuote, type Settings } from "@dilruba/shared/ops";
+import { defaultSettings, formatDay, hotelCityLabels, type PublicQuote, type Settings } from "@dilruba/shared/ops";
 import { formatTravelMonth } from "@dilruba/shared/booking";
 import { fullAddress, site } from "@dilruba/shared/site";
 
@@ -122,6 +122,25 @@ export function quotePdf(q: PublicQuote, settings: Settings): Promise<Buffer> {
   text(q.title, M + 100, py, { size: 9, width: W - 100 });
   doc.y += 4;
 
+  // ---- Hotels: one box per city, side by side (as on the package sheets)
+  if (q.hotels.length) {
+    doc.y += 12;
+    const boxW = q.hotels.length > 1 ? (W - 12) / 2 : W;
+    const heights = q.hotels.map((h) => 40 + (h.detail ? 12 : 0));
+    const h = Math.max(...heights);
+    room(h);
+    const top = doc.y;
+    q.hotels.slice(0, 2).forEach((hotel, i) => {
+      const x = M + i * (boxW + 12);
+      doc.roundedRect(x, top, boxW, h, 5).lineWidth(0.8).fillAndStroke(tealTint, "#bfe3dc");
+      doc.rect(x, top, 3.5, h).fill(teal);
+      text(`${hotelCityLabels[hotel.city].toUpperCase()} ACCOMMODATION`, x + 14, top + 8, { font: "bold", size: 8.5, color: teal });
+      text(hotel.name, x + 14, top + 21, { font: "bold", size: 10.5, width: boxW - 24, height: 15, ellipsis: true });
+      if (hotel.detail) text(hotel.detail, x + 14, top + 37, { size: 8, color: muted, width: boxW - 24, height: 12, ellipsis: true });
+    });
+    doc.y = top + h;
+  }
+
   // ---- Billing table
   section("PAYMENT SUMMARY & BILLING BREAKDOWN");
   const cols = [
@@ -167,8 +186,12 @@ export function quotePdf(q: PublicQuote, settings: Settings): Promise<Buffer> {
     doc.y = top + 22;
   }
   doc.y += 6;
-  text("Prices include GST. TCS on overseas packages, where applicable, is added on the booking.", M, doc.y, { size: 7.5, color: muted, width: W });
-  doc.y += 10;
+  // Only what's ticked on the quote.
+  const taxNote = [q.gstRate !== null && `Prices include GST @ ${q.gstRate}%.`, q.tcsRate !== null && `TCS @ ${q.tcsRate}% is added on the booking and can be claimed in your income-tax return.`].filter(Boolean).join(" ");
+  if (taxNote) {
+    text(taxNote, M, doc.y, { size: 7.5, color: muted, width: W });
+    doc.y += 10;
+  }
 
   // ---- Bank details ("Label: value" lines, shown two per row)
   const bank = (settings.bankDetails || defaultSettings.bankDetails).split("\n").map((l) => l.trim()).filter(Boolean);
@@ -210,6 +233,26 @@ export function quotePdf(q: PublicQuote, settings: Settings): Promise<Buffer> {
       doc.y = top + h + 4;
     }
   }
+  // ---- Day-by-day itinerary
+  if (q.itinerary.length) {
+    section("DAY-BY-DAY ITINERARY");
+    for (const d of q.itinerary) {
+      doc.font("bold").fontSize(9);
+      const titleH = doc.heightOfString(d.title, { width: W - 92 });
+      doc.font("body").fontSize(8.5);
+      const descH = d.description ? doc.heightOfString(d.description, { width: W - 92, lineGap: 1 }) : 0;
+      const h = Math.max(20, titleH + descH + 10);
+      room(h);
+      const top = doc.y;
+      doc.roundedRect(M, top + 1, 74, 15, 3).fill(teal);
+      text(d.day.toUpperCase(), M, top + 4, { font: "bold", size: 7.5, color: "#ffffff", width: 74, align: "center", height: 10, ellipsis: true });
+      text(d.title, M + 86, top + 1, { font: "bold", size: 9, color: tealDark, width: W - 92 });
+      if (d.description) text(d.description, M + 86, top + 2 + titleH, { size: 8.5, width: W - 92, lineGap: 1 });
+      doc.moveTo(M, top + h - 2).lineTo(M + W, top + h - 2).lineWidth(0.5).dash(2, { space: 2 }).strokeColor(line).stroke().undash();
+      doc.y = top + h + 2;
+    }
+  }
+
   if (q.message) {
     section("NOTES");
     room(30);

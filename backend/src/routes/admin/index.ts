@@ -27,6 +27,7 @@ import { parseBody } from "../../lib/util.ts";
 import { dashboardAlerts } from "../../services/alerts.ts";
 import { bookingsAdminRouter } from "./bookings.ts";
 import { customersRouter } from "./customers.ts";
+import { hotelsRouter } from "./hotels.ts";
 import { departuresRouter } from "./departures.ts";
 import { leadsRouter } from "./leads.ts";
 import { mediaRouter, packagesRouter } from "./packages.ts";
@@ -201,6 +202,8 @@ adminRouter.use("/quotes", guard({ read: "leads.read", write: "quotes.write" }),
 adminRouter.use("/bookings", requirePermission("bookings.read"), bookingsAdminRouter);
 adminRouter.use("/customers", guard({ read: "customers.read", write: "customers.write" }), customersRouter);
 adminRouter.use("/packages", guard({ read: "bookings.read", write: "catalog.write" }), packagesRouter);
+// Quote writers (sales) read the list; packages staff add and delete hotels.
+adminRouter.use("/hotels", guard({ read: ["leads.read", "catalog.write"], write: "catalog.write" }), hotelsRouter);
 adminRouter.use("/media", requirePermission("catalog.write"), mediaRouter);
 adminRouter.use("/departures", guard({ read: "bookings.read", write: "catalog.write" }), departuresRouter);
 adminRouter.use("/reviews", requirePermission("catalog.write"), reviewsRouter);

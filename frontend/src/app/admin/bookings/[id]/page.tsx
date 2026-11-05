@@ -241,18 +241,20 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
   const [trip, setTrip] = useState({ title: b.packageTitle, category: b.packageCategory ?? "", slug: b.packageSlug ?? "" });
   const selectedPackage = trip.category && trip.slug ? `${trip.category}/${trip.slug}` : "";
   const [tcs, setTcs] = useState(rupees(b.tcsAmount));
+  const [gstOn, setGstOn] = useState(b.gstEnabled);
+  const [tcsOn, setTcsOn] = useState(b.tcsEnabled);
   // Controlled: the list loads after the form, and an uncontrolled select would lose its value.
   const [departureId, setDepartureId] = useState(b.departure ? String(b.departure.id) : "");
   return (
     <Card title="Edit booking">
       <form
-        key={`${b.totalAmount}-${b.depositAmount}-${b.tcsAmount}-${b.adults}-${b.children}-${b.travelMonth}-${b.departure?.id}`}
+        key={`${b.totalAmount}-${b.depositAmount}-${b.tcsAmount}-${b.gstEnabled}-${b.tcsEnabled}-${b.adults}-${b.children}-${b.travelMonth}-${b.departure?.id}`}
         onSubmit={(e) => {
           e.preventDefault();
           const f = new FormData(e.currentTarget);
           const num = (k: string) => (f.get(k) === "" ? null : Number(f.get(k)));
           void onSave({
-            ...(can("payments.write") ? { totalAmount: num("total"), depositAmount: num("deposit"), tcsAmount: Number(tcs) || 0 } : {}),
+            ...(can("payments.write") ? { totalAmount: num("total"), depositAmount: num("deposit"), gstEnabled: gstOn, tcsEnabled: tcsOn, tcsAmount: tcsOn ? Number(tcs) || 0 : 0 } : {}),
             ...(can("bookings.write") ? {
               packageTitle: f.get("packageTitle"), packageCategory: f.get("packageCategory") || null, packageSlug: f.get("packageSlug") || null,
               customerNotes: f.get("customerNotes") || null, mobile: f.get("mobile") || null,
@@ -314,7 +316,26 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
           </select>
         </div>
         </fieldset>
-        <div className="sm:col-span-2">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm sm:col-span-2">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={gstOn} disabled={!can("payments.write")} onChange={(e) => setGstOn(e.target.checked)} className="size-4 accent-[var(--color-brand)]" /> Show GST on the invoice
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={tcsOn}
+              disabled={!can("payments.write")}
+              onChange={(e) => {
+                setTcsOn(e.target.checked);
+                // Ticking it starts from the Settings rate; the amount can still be changed.
+                if (e.target.checked && !Number(tcs)) setTcs(rupees(b.suggestedTcs));
+              }}
+              className="size-4 accent-[var(--color-brand)]"
+            />{" "}
+            Add TCS
+          </label>
+        </div>
+        {tcsOn && <div className="sm:col-span-2">
           <label htmlFor="bk-tcs" className="label">TCS collected (₹) <span className="font-normal text-muted">charged on top of the total</span></label>
           <div className="flex gap-2">
             <input id="bk-tcs" disabled={!can("payments.write")} type="number" min="0" step="1" inputMode="numeric" value={tcs} onChange={(e) => setTcs(e.target.value)} placeholder="0" className="field" />
@@ -325,7 +346,7 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
             )}
           </div>
           <p className="mt-1 text-xs text-muted">Overseas packages: the TCS rate is set in Settings (confirm with your CA). The customer can claim it against their income tax.</p>
-        </div>
+        </div>}
         <div className="flex items-end sm:col-span-2">
           <button type="submit" disabled={busy} className="btn btn-outline w-full disabled:opacity-50">Save</button>
         </div>

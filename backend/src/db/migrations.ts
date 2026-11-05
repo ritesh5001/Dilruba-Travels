@@ -487,6 +487,45 @@ migrations["0008_room_prices_and_booking_details"] = {
   },
 };
 
+migrations["0009_hotels_itinerary_tax_options"] = {
+  async up(db: Kysely<any>) {
+    // Makkah and Madinah hotels the team picks from when writing a quote.
+    await db.schema
+      .createTable("hotels")
+      .addColumn("id", "serial", (c) => c.primaryKey())
+      .addColumn("city", "text", (c) => c.notNull().check(sql`city in ('makkah', 'madinah')`))
+      .addColumn("name", "text", (c) => c.notNull())
+      .addColumn("detail", "text")
+      .addColumn("created_at", "timestamptz", (c) => c.notNull().defaultTo(sql`now()`))
+      .execute();
+    await db
+      .insertInto("hotels")
+      .values([
+        { city: "makkah", name: "Sarayat Al Talayie (Ex Najmat Ajyad)", detail: "1.5 km from the Haram · 24 hrs free shuttle service" },
+        { city: "madinah", name: "Safa Al Barakha", detail: "650 m · easy walking distance" },
+      ])
+      .execute();
+
+    // Quotes carry their own itinerary and hotel choice (copied, so later edits don't change sent quotes).
+    await db.schema
+      .alterTable("quotes")
+      .addColumn("itinerary", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("hotels", "jsonb", (c) => c.notNull().defaultTo(sql`'[]'::jsonb`))
+      .addColumn("gst_enabled", "boolean", (c) => c.notNull().defaultTo(false))
+      .addColumn("tcs_enabled", "boolean", (c) => c.notNull().defaultTo(false))
+      .execute();
+
+    // GST and TCS now apply only when ticked. Bookings keep what they already have: TCS where an
+    // amount was set, GST where an invoice was issued.
+    await db.schema
+      .alterTable("bookings")
+      .addColumn("gst_enabled", "boolean", (c) => c.notNull().defaultTo(false))
+      .addColumn("tcs_enabled", "boolean", (c) => c.notNull().defaultTo(false))
+      .execute();
+    await db.updateTable("bookings").set({ tcs_enabled: sql`tcs_amount > 0`, gst_enabled: sql`invoice_number is not null` }).execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };

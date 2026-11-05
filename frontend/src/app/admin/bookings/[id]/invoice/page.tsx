@@ -39,7 +39,8 @@ export default function InvoicePage() {
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!inv) return <Loading />;
 
-  const isTaxInvoice = inv.gst !== null;
+  // A tax invoice needs GST ticked on the booking and the company's GSTIN in Settings.
+  const isTaxInvoice = inv.gst !== null && !!inv.seller.gstin;
   const title = inv.number ? (isTaxInvoice ? "TAX INVOICE" : "INVOICE") : "PROFORMA INVOICE";
   // GST splits evenly into CGST and SGST (any odd paisa goes to SGST).
   const cgst = inv.gst ? Math.floor(inv.gst.tax / 2) : 0;
@@ -84,7 +85,7 @@ export default function InvoicePage() {
           }
         />
         {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
-        {!isTaxInvoice && <p className="mb-4 rounded-xl bg-amber/20 px-4 py-3 text-sm">No GSTIN in Settings, so this prints without the GST breakdown.</p>}
+        {inv.gst && !inv.seller.gstin && <p className="mb-4 rounded-xl bg-amber/20 px-4 py-3 text-sm">GST is ticked on this booking but there&apos;s no GSTIN in Settings. Add it there so this prints as a tax invoice.</p>}
       </div>
 
       <div className="overflow-x-auto print:overflow-visible">
@@ -192,7 +193,7 @@ export default function InvoicePage() {
             <div className="-mt-px grid grid-cols-[1fr_320px] border-b border-black/70">
               <div className="border-r border-black/70 px-3 py-2">
                 <p><span className="font-semibold">Amount in Words:</span> {rupeesInWords(inv.total)}</p>
-                {isTaxInvoice && <p className="mt-1 text-[10.5px] text-black/70">Prices include GST. Tour operator services, SAC {SAC}.</p>}
+                {inv.gst && <p className="mt-1 text-[10.5px] text-black/70">Prices include GST. Tour operator services, SAC {SAC}.</p>}
               </div>
               <table className="w-full border-collapse">
                 <tbody>
