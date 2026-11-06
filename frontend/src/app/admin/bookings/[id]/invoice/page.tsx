@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { Loader2, Printer } from "lucide-react";
 import { formatDay, roomTypeLabels, rupeesInWords, todayIST, type InvoiceData } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { ErrorBox, Loading, PageHeader, formatDate } from "@/components/admin/ui";
+import { useCan } from "@/components/admin/shell";
 
 /** 1234567 paise → "12,345.67", the way the amounts print on the invoice. */
 const amount = (paise: number) => (paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -23,7 +25,6 @@ const labelled = (text: string) =>
 // Bordered cells, as on the printed voucher.
 const cell = "border border-black/70 px-2 py-1.5 align-top";
 const head = `${cell} bg-black/[0.04] text-center font-semibold`;
-const SAC = "998555";
 
 /**
  * The booking invoice in the style of the company's printed vouchers: a boxed A4 sheet with the
@@ -35,6 +36,7 @@ export default function InvoicePage() {
   const { id } = useParams<{ id: string }>();
   const { data: inv, setData, error, reload } = useAdminData<InvoiceData>(`/bookings/${id}/invoice`);
   const action = useAction();
+  const canEditSac = useCan()("payments.write");
 
   if (error) return <ErrorBox message={error} onRetry={reload} />;
   if (!inv) return <Loading />;
@@ -85,6 +87,10 @@ export default function InvoicePage() {
           }
         />
         {action.error && <div className="mb-4"><ErrorBox message={action.error} /></div>}
+        {canEditSac && <SacCode key={inv.sacCode} inv={inv} busy={action.busy} onSave={(sacCode) => action.run(async () => {
+          await adminFetch(`/bookings/${id}`, { method: "PATCH", body: { sacCode, notifyCustomer: false } });
+          await reload();
+        })} />}
         {inv.gst && !inv.seller.gstin && <p className="mb-4 rounded-xl bg-amber/20 px-4 py-3 text-sm">GST is ticked on this booking but there&apos;s no GSTIN in Settings. Add it there so this prints as a tax invoice.</p>}
       </div>
 
@@ -118,7 +124,7 @@ export default function InvoicePage() {
                 <p>Booking Reference : <strong>{inv.booking.reference}</strong></p>
                 <p>Inv Date : {formatDay(inv.date ?? todayIST())}</p>
                 <p>{inv.number ? "Invoice No" : "Proforma Inv No"} : <strong>{inv.number ?? `PRO-${inv.booking.reference}`}</strong></p>
-                <p>SAC Code : {SAC}</p>
+                <p>SAC Code : {inv.sacCode}</p>
               </div>
             </div>
 
@@ -175,7 +181,7 @@ export default function InvoicePage() {
                   <tr key={i}>
                     <td className={cell}>{i + 1}</td>
                     <td className={cell}>{item.description}</td>
-                    <td className={`${cell} text-center`}>{SAC}</td>
+                    <td className={`${cell} text-center`}>{inv.sacCode}</td>
                     <td className={`${cell} text-center`}>{item.quantity}</td>
                     <td className={`${cell} text-right`}>{amount(item.rate)}</td>
                     <td className={`${cell} text-right`}>{amount(item.amount)}</td>
@@ -193,7 +199,7 @@ export default function InvoicePage() {
             <div className="-mt-px grid grid-cols-[1fr_320px] border-b border-black/70">
               <div className="border-r border-black/70 px-3 py-2">
                 <p><span className="font-semibold">Amount in Words:</span> {rupeesInWords(inv.total)}</p>
-                {inv.gst && <p className="mt-1 text-[10.5px] text-black/70">Prices include GST. Tour operator services, SAC {SAC}.</p>}
+                {inv.gst && <p className="mt-1 text-[10.5px] text-black/70">Prices include GST. SAC {inv.sacCode}.</p>}
               </div>
               <table className="w-full border-collapse">
                 <tbody>
@@ -268,5 +274,23 @@ export default function InvoicePage() {
         </article>
       </div>
     </>
+  );
+}
+
+/** The SAC code for this booking's invoice: the Settings default, or its own (e.g. visa services). */
+function SacCode({ inv, busy, onSave }: { inv: InvoiceData; busy: boolean; onSave: (sacCode: string | null) => Promise<unknown> }) {
+  const [value, setValue] = useState(inv.sacCode);
+  return (
+    <div className="mb-4 flex flex-wrap items-end gap-2">
+      <div>
+        <label htmlFor="inv-sac" className="label">SAC code on this invoice</label>
+        <input id="inv-sac" value={value} onChange={(e) => setValue(e.target.value.replace(/\D/g, ""))} inputMode="numeric" maxLength={8} className="field w-40" />
+      </div>
+      <button type="button" disabled={busy || value === inv.sacCode || !/^\d{4,8}$/.test(value)} onClick={() => void onSave(value)} className="btn btn-outline !py-2 disabled:opacity-50">Save SAC</button>
+      {inv.sacOverridden && (
+        <button type="button" disabled={busy} onClick={() => void onSave(null)} className="py-2 text-sm text-muted hover:text-brand">Use the default from Settings</button>
+      )}
+      <p className="w-full text-xs text-muted">998555 tour operator services · 998559 other travel arrangement (e.g. visa) · 998551 air ticket reservation. The default is set in Settings.</p>
+    </div>
   );
 }

@@ -64,6 +64,8 @@ export interface BookingTable {
   amount_paid: ColumnType<number, number | undefined, number>;
   /** Money given back after a cancellation (paise); amount_paid stays what the customer paid. */
   refunded_amount: ColumnType<number, number | undefined, number>;
+  /** SAC code for this booking's invoice; null uses the Settings default. */
+  sac_code: string | null;
   /** Show the GST split on the invoice. */
   gst_enabled: ColumnType<boolean, boolean | undefined, boolean>;
   /** Charge TCS on top (tcs_amount is 0 when off). */

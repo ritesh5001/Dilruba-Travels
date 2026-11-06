@@ -1,6 +1,6 @@
 import { bookingStatuses, bookingStatusLabels, formatINR, formatTravelMonth, paymentMethodLabels, paymentMethods, type PaymentMethod } from "@dilruba/shared/booking";
 import type { AdminBooking, AdminBookingDetail, Paged } from "@dilruba/shared/crm";
-import { costInputSchema, defaultSettings, financialYear, formatDay, instalmentPlanSchema, roomTypeLabels, splitGst, supplierTypeForCost, todayIST, type InvoiceData } from "@dilruba/shared/ops";
+import { allRoomTypes, costInputSchema, defaultSettings, financialYear, formatDay, instalmentPlanSchema, roomTypeLabels, splitGst, supplierTypeForCost, todayIST, type InvoiceData } from "@dilruba/shared/ops";
 import { site } from "@dilruba/shared/site";
 import { Router, type Response } from "express";
 import { sql } from "kysely";
@@ -135,11 +135,12 @@ const updateSchema = z
     depositAmount: rupees.nullable().optional(),
     tcsAmount: rupees.optional(),
     gstEnabled: z.boolean().optional(),
+    sacCode: z.union([z.string().trim().regex(/^\d{4,8}$/, "A SAC code is 4 to 8 digits"), z.literal("")]).nullable().optional().transform((v) => (v === undefined ? undefined : v || null)),
     tcsEnabled: z.boolean().optional(),
     customerNotes: z.string().trim().max(1000).nullable().optional(),
     mobile: z.string().trim().regex(/^[+\d][\d\s-]{7,16}$/).nullable().optional(),
     passportNumber: z.string().trim().min(5).max(30).regex(/^[a-zA-Z0-9 -]+$/).nullable().optional(),
-    roomType: z.enum(["single", "double", "triple", "quad"]).nullable().optional(),
+    roomType: z.enum(allRoomTypes).nullable().optional(),
     packageCategory: z.string().trim().max(40).nullable().optional(),
     packageSlug: z.string().trim().max(120).nullable().optional(),
     packageTitle: z.string().trim().min(1).max(160).optional(),
@@ -193,7 +194,8 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
     changed(toPaise(data.depositAmount), before.deposit_amount) ||
     tcs !== before.tcs_amount ||
     changed(data.gstEnabled, before.gst_enabled) ||
-    changed(data.tcsEnabled, before.tcs_enabled);
+    changed(data.tcsEnabled, before.tcs_enabled) ||
+    changed(data.sacCode, before.sac_code);
   const tripChanged =
     changed(data.customerNotes, before.customer_notes) ||
     changed(data.mobile, before.mobile) ||
@@ -240,6 +242,7 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
         tcs_amount: tcs,
         tcs_enabled: tcsEnabled,
         gst_enabled: data.gstEnabled,
+        sac_code: data.sacCode,
         package_title: data.packageTitle,
         package_category: data.packageCategory,
         package_slug: data.packageSlug,
@@ -262,6 +265,7 @@ bookingsAdminRouter.patch("/:id", requirePermission("bookings.write", "payments.
     if (b.total_amount !== before.total_amount) changes.push(`total ${formatINR(before.total_amount)} → ${formatINR(b.total_amount)}`);
     if (b.deposit_amount !== before.deposit_amount) changes.push(`deposit ${formatINR(before.deposit_amount)} → ${formatINR(b.deposit_amount)}`);
     if (b.tcs_amount !== before.tcs_amount) changes.push(`TCS ${formatINR(before.tcs_amount)} → ${formatINR(b.tcs_amount)}`);
+    if (b.sac_code !== before.sac_code) changes.push(`invoice SAC code → ${b.sac_code ?? "default"}`);
     if (b.gst_enabled !== before.gst_enabled) changes.push(b.gst_enabled ? "GST shown on the invoice" : "GST removed from the invoice");
     if (b.tcs_enabled !== before.tcs_enabled && !b.tcs_enabled) changes.push("TCS removed");
     if (b.customer_notes !== before.customer_notes) changes.push("customer notes updated");
@@ -563,6 +567,8 @@ async function invoiceData(id: number): Promise<InvoiceData | null> {
   const gst = b.gst_enabled && settings.gstRate > 0 ? { rate: settings.gstRate, ...splitGst(b.total_amount, settings.gstRate) } : null;
   return {
     number: b.invoice_number,
+    sacCode: b.sac_code ?? settings.sacCode,
+    sacOverridden: b.sac_code !== null,
     date: b.invoice_date,
     seller: {
       legalName: settings.legalName,

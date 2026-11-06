@@ -82,9 +82,13 @@ export const visaStatusLabels: Record<VisaStatus, string> = {
   rejected: "Rejected",
 };
 
-export const roomTypes = ["quad", "triple", "double", "single"] as const;
-export type RoomType = (typeof roomTypes)[number];
+/** Every room type a booking or traveller can have ("single" only on older records). */
+export const allRoomTypes = ["quint", "quad", "triple", "double", "single"] as const;
+export type RoomType = (typeof allRoomTypes)[number];
+/** The room sharing options offered: on packages, the website, quotes and bookings. */
+export const roomTypes = ["quint", "quad", "triple", "double"] as const satisfies readonly RoomType[];
 export const roomTypeLabels: Record<RoomType, string> = {
+  quint: "Quint (5 sharing)",
   quad: "Quad (4 sharing)",
   triple: "Triple (3 sharing)",
   double: "Double (2 sharing)",
@@ -264,7 +268,7 @@ export const travellerInputSchema = z.object({
   nationality: z.string().trim().min(2).max(40).default("Indian"),
   mahram: optionalText(120),
   visaStatus: z.enum(visaStatuses).default("not_started"),
-  roomType: z.union([z.enum(roomTypes), z.literal("")]).optional().transform((v) => v || null),
+  roomType: z.union([z.enum(allRoomTypes), z.literal("")]).optional().transform((v) => v || null),
   roomLabel: optionalText(40),
   busSeat: optionalText(20),
   notes: optionalText(1000),
@@ -573,6 +577,8 @@ export const settingsSchema = z.object({
     .toUpperCase()
     .regex(/^$|^[0-9A-Z]{15}$/, "A GSTIN is 15 letters and numbers"),
   invoicePrefix: z.string().trim().max(12),
+  /** SAC code printed on invoices unless a booking sets its own (998555: tour operator services). */
+  sacCode: z.string().trim().regex(/^\d{4,8}$/, "A SAC code is 4 to 8 digits"),
   /** GST rate on tour packages, percent. Prices in the CRM always include it. */
   gstRate: z.coerce.number().min(0).max(28),
   /** TCS on overseas tour packages, percent; collected on top of the price. */
@@ -601,6 +607,7 @@ export const defaultSettings: Settings = {
   address: "Shop 3A, Building No 5B, Baliga Nagar, Jasmine Mill Road, Mahim East, Mumbai 400017",
   gstin: "",
   invoicePrefix: "DT/",
+  sacCode: "998555",
   gstRate: 5,
   // Budget 2026: flat 2% TCS on overseas tour packages from 1 April 2026. Check with your CA.
   tcsRate: 2,
@@ -633,6 +640,10 @@ export const defaultSettings: Settings = {
 export type InvoiceData = {
   /** Null until "Issue invoice" gives it a number (numbers never change or get reused). */
   number: string | null;
+  /** This booking's SAC code, or the default from Settings. */
+  sacCode: string;
+  /** True when the booking has its own SAC code instead of the default. */
+  sacOverridden: boolean;
   date: string | null;
   seller: { legalName: string; address: string; gstin: string; bankDetails: string; terms: string; phone: string; email: string };
   buyer: { name: string; phone: string; email: string | null };

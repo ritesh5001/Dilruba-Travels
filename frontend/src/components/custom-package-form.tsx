@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle2, Loader2, Send } from "lucide-react";
+import { CalendarDays, CheckCircle2, Loader2, Send } from "lucide-react";
 import { enquirySchema, services } from "@dilruba/shared/enquiry";
 import { todayIST } from "@dilruba/shared/ops";
 import { getReferral } from "@/lib/referral";
@@ -120,7 +120,24 @@ export function CustomPackageForm() {
           </div>
           <div>
             <label htmlFor="cp-date" className="label">Travel date</label>
-            <input id="cp-date" name="travelDate" type="date" min={today} className="field" />
+            <div className="relative">
+              <input
+                id="cp-date"
+                name="travelDate"
+                type="date"
+                min={today}
+                // Open the calendar from anywhere in the box, not just the small icon.
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker?.();
+                  } catch {
+                    // Already open, or the browser has no picker: typing still works.
+                  }
+                }}
+                className="field cursor-pointer pr-11 [&::-webkit-calendar-picker-indicator]:opacity-0"
+              />
+              <CalendarDays className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-brand" aria-hidden />
+            </div>
           </div>
           <div>
             <label htmlFor="cp-city" className="label">Departure city</label>

@@ -52,13 +52,13 @@ try {
   assert.ok(cookie);
   const packages = (await request("/admin/packages")).json;
   const pkg = packages[0];
-  const roomPrices = { single: 140000, double: 110000, triple: 95000, quad: 85000 };
+  const roomPrices = { quint: 80000, quad: 85000, triple: 95000, double: 110000 };
   const input = { ...pkg, roomPrices, tier: pkg.tier ?? null, sharing: pkg.sharing ?? null, routeFrom: pkg.route[0], routeTo: pkg.route[1], gallery: pkg.gallery ?? [], hotels: pkg.hotels ?? [], faqs: pkg.faqs ?? [], published: true };
   await request(`/admin/packages/${pkg.id}`, "PUT", input);
   const dep = (await request("/admin/departures", "POST", { packageId: pkg.id, title: "Test group", startDate: "2099-01-10", endDate: "2099-01-24", seats: 40 }, 201)).json;
   const catalog = (await request("/catalog/packages")).json.packages.find((p: { id: number }) => p.id === pkg.id);
   assert.deepEqual(catalog.roomPrices, roomPrices);
-  assert.equal(catalog.startingPrice, 85000);
+  assert.equal(catalog.startingPrice, 80000);
   assert.equal(catalog.departures[0].startDate, "2099-01-10");
   let lastBooking: { id: number; customer: { id: number } } | undefined;
   for (const [roomType, price] of Object.entries(roomPrices)) {
@@ -76,7 +76,7 @@ try {
   }
   assert.ok(lastBooking);
   const bid = lastBooking.id; const cid = lastBooking.customer.id;
-  const edited = (await request(`/admin/bookings/${bid}`, "PATCH", { packageTitle: "Updated trip", packageCategory: "umrah", packageSlug: "updated-trip", roomType: "single", mobile: "+919812345678", passportNumber: "B7654321", customerNotes: "Wheelchair needed", adults: 1, children: 0, travelMonth: "2099-01", totalAmount: 150000, depositAmount: 30000, notifyCustomer: false })).json;
+  const edited = (await request(`/admin/bookings/${bid}`, "PATCH", { packageTitle: "Updated trip", packageCategory: "umrah", packageSlug: "updated-trip", roomType: "quint", mobile: "+919812345678", passportNumber: "B7654321", customerNotes: "Wheelchair needed", adults: 1, children: 0, travelMonth: "2099-01", totalAmount: 150000, depositAmount: 30000, notifyCustomer: false })).json;
   assert.equal(edited.packageTitle, "Updated trip"); assert.equal(edited.passportNumber, "B7654321"); assert.equal(edited.customerNotes, "Wheelchair needed"); assert.equal(edited.totalAmount, 15000000);
   await request(`/admin/customers/${cid}`, "PATCH", { name: "Updated Customer", phone: "+919811112222", email: "updated@example.test" });
   assert.equal((await request(`/admin/bookings/${bid}`)).json.customer.phone, "+919811112222");

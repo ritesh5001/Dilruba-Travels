@@ -33,7 +33,7 @@ export type Draft = {
   nights: string;
   tier: string;
   startingPrice: string;
-  roomPrices: Record<"single" | "double" | "triple" | "quad", string>;
+  roomPrices: Record<"quint" | "quad" | "triple" | "double", string>;
   sharing: string;
   routeFrom: string;
   routeTo: string;
@@ -62,7 +62,7 @@ export function blankDraft(category: CategorySlug): Draft {
     nights: "14",
     tier: "",
     startingPrice: "",
-    roomPrices: { single: "", double: "", triple: "", quad: "" },
+    roomPrices: { quint: "", quad: "", triple: "", double: "" },
     sharing: "",
     routeFrom: "Mumbai",
     routeTo: "",
@@ -93,7 +93,7 @@ export function draftFromPackage(p: AdminPackage): Draft {
     nights: String(p.nights),
     tier: p.tier ?? "",
     startingPrice: p.startingPrice === null ? "" : String(p.startingPrice),
-    roomPrices: { single: String(p.roomPrices?.single ?? ""), double: String(p.roomPrices?.double ?? ""), triple: String(p.roomPrices?.triple ?? ""), quad: String(p.roomPrices?.quad ?? "") },
+    roomPrices: { quint: String(p.roomPrices?.quint ?? ""), quad: String(p.roomPrices?.quad ?? ""), triple: String(p.roomPrices?.triple ?? ""), double: String(p.roomPrices?.double ?? "") },
     sharing: p.sharing ?? "",
     routeFrom: p.route[0],
     routeTo: p.route[1],
@@ -250,11 +250,11 @@ export function PackageEditor({ initial, id }: { initial: Draft; id?: number }) 
                   {packageTiers.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
-              {(["single", "double", "triple", "quad"] as const).map((room) => (
+              {(["quint", "quad", "triple", "double"] as const).map((room) => (
                 <Text key={room} label={`${room[0].toUpperCase() + room.slice(1)} sharing (₹ per person)`} type="number" value={d.roomPrices[room]} onChange={(v) => set("roomPrices", { ...d.roomPrices, [room]: v })} hint="Leave empty for price on request." />
               ))}
               <Link href="/admin/departures" className="text-sm text-brand underline">Manage fixed departure dates for this package</Link>
-              <Text label="Room sharing" value={d.sharing} onChange={(v) => set("sharing", v)} placeholder="e.g. Quad / Triple / Double" />
+              <Text label="Room sharing" value={d.sharing} onChange={(v) => set("sharing", v)} placeholder="e.g. Quint / Quad / Triple / Double" />
               <Area label="Places covered" value={d.places} onChange={(v) => set("places", v)} rows={2} hint="One per line (or comma separated)." />
               <Text label="Route from" value={d.routeFrom} onChange={(v) => set("routeFrom", v)} />
               <Text label="Route to" value={d.routeTo} onChange={(v) => set("routeTo", v)} placeholder="e.g. Makkah" />

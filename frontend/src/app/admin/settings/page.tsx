@@ -34,6 +34,7 @@ export default function SettingsPage() {
                 address: s("address"),
                 gstin: s("gstin"),
                 invoicePrefix: s("invoicePrefix"),
+                sacCode: s("sacCode"),
                 gstRate: Number(s("gstRate")),
                 tcsRate: Number(s("tcsRate")),
                 tcsCategories: f.getAll("tcsCategories"),
@@ -75,6 +76,11 @@ export default function SettingsPage() {
               <label htmlFor="s-prefix" className="label">Invoice number prefix</label>
               <input id="s-prefix" name="invoicePrefix" defaultValue={data.invoicePrefix} maxLength={12} className="field" />
               <p className="mt-1 text-xs text-muted">Numbers look like {data.invoicePrefix}2026-27/0001</p>
+            </div>
+            <div>
+              <label htmlFor="s-sac" className="label">Default SAC code</label>
+              <input id="s-sac" name="sacCode" defaultValue={data.sacCode} inputMode="numeric" maxLength={8} className="field" />
+              <p className="mt-1 text-xs text-muted">998555 is tour operator services (packages). Each booking can set its own on its invoice page, e.g. 998559 for visa services.</p>
             </div>
             <div className="sm:col-span-2">
               <label htmlFor="s-bank" className="label">Bank details printed on invoices</label>

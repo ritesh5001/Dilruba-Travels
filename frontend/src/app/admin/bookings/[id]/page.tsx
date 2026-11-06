@@ -15,7 +15,7 @@ import {
 } from "@dilruba/shared/booking";
 import type { AdminPackage } from "@dilruba/shared/catalog";
 import type { AdminBookingDetail } from "@dilruba/shared/crm";
-import { formatDay, type AdminDeparture } from "@dilruba/shared/ops";
+import { formatDay, roomTypeLabels, roomTypes, type AdminDeparture } from "@dilruba/shared/ops";
 import { adminFetch, useAction, useAdminData } from "@/lib/admin-api";
 import { bookingTemplates } from "@/lib/whatsapp-templates";
 import { CostsCard, FeedbackCard, InstalmentsCard, TravellersCard } from "@/components/admin/booking-sections";
@@ -291,7 +291,7 @@ function PricingCard({ b, busy, onSave }: { b: AdminBookingDetail; busy: boolean
           </div>
           <div><label className="label" htmlFor="edit-mobile">Mobile number</label><input id="edit-mobile" name="mobile" type="tel" defaultValue={b.mobile ?? ""} className="field" /></div>
           <div><label className="label" htmlFor="edit-passport">Passport number</label><input id="edit-passport" name="passportNumber" defaultValue={b.passportNumber ?? ""} className="field" /></div>
-          <div><label className="label" htmlFor="edit-room">Room sharing</label><select id="edit-room" name="roomType" defaultValue={b.roomType ?? ""} className="field"><option value="">Unspecified</option>{["single", "double", "triple", "quad"].map((r) => <option key={r} value={r}>{r}</option>)}</select></div>
+          <div><label className="label" htmlFor="edit-room">Room sharing</label><select id="edit-room" name="roomType" defaultValue={b.roomType ?? ""} className="field"><option value="">Unspecified</option>{[...roomTypes, ...(b.roomType && !(roomTypes as readonly string[]).includes(b.roomType) ? [b.roomType] : [])].map((r) => <option key={r} value={r}>{roomTypeLabels[r]}</option>)}</select></div>
           <div><label className="label" htmlFor="edit-notes">Customer notes</label><textarea id="edit-notes" name="customerNotes" defaultValue={b.customerNotes ?? ""} className="field" /></div>
         <div>
           <label htmlFor="bk-adults" className="label">Adults</label>

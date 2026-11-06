@@ -526,6 +526,16 @@ migrations["0009_hotels_itinerary_tax_options"] = {
   },
 };
 
+migrations["0010_quint_rooms"] = {
+  async up(db: Kysely<any>) {
+    // Quint (5 sharing) joins quad, triple and double; single stays valid on older bookings.
+    await db.schema.alterTable("bookings").dropConstraint("bookings_room_type").execute();
+    await db.schema.alterTable("bookings").addCheckConstraint("bookings_room_type", sql`room_type in ('quint', 'quad', 'triple', 'double', 'single')`).execute();
+    // A booking can print its own SAC code (e.g. visa or air tickets); otherwise Settings' default.
+    await db.schema.alterTable("bookings").addColumn("sac_code", "text").execute();
+  },
+};
+
 const provider: MigrationProvider = {
   getMigrations: async () => migrations,
 };
